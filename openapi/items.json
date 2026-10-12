@@ -1,0 +1,1750 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Malvo — Items",
+    "version": "1.0.0",
+    "description": "API de Items da Malvo. Um Item representa uma conexão entre um usuário e um Connector, mantém o vínculo com os consentimentos e é o ponto de entrada para todos os dados de produtos (contas, cartões, transações, investimentos, identidade). Contrato público estável, sem iniciação de pagamento. Autenticação por header `X-API-KEY`."
+  },
+  "servers": [
+    {
+      "url": "https://api.malvo.io"
+    }
+  ],
+  "security": [
+    {
+      "apiKeyAuth": []
+    }
+  ],
+  "tags": [
+    {
+      "name": "Items",
+      "description": "Um **Item** representa uma conexão entre um usuário e um Connector. Mantém o vínculo com os consentimentos e é o ponto de entrada para os produtos anunciados pelo conector.\n\n**Histórico e delta:** no Brasil, a criação recupera até 365 dias e o delta usa sobreposição aproximada de 3 dias. No Open Banking internacional, a primeira coleta busca o maior histórico disponível, as seguintes usam sobreposição de 90 dias e uma reconciliação completa é tentada a cada 30 dias. O auto-sync atualiza conforme a frequência do Item; `nextAutoSyncAt` indica a próxima execução. Items de sandbox inativos por mais de 30 dias são removidos.\n\n**Máquina de estados:** `POST /items` cria o Item em `status=CREATING`. A Malvo move `status` para `UPDATING`/`LOGIN_IN_PROGRESS`. Durante o redirect, `status=LOGIN_IN_PROGRESS` e `executionStatus=USER_AUTHORIZATION_PENDING`; depois coleta os produtos e termina com `status=UPDATED` (sucesso ou parcial) ou `OUTDATED`/`LOGIN_ERROR`. `PATCH /items/{id}` e o modo Update renovam a conexão no mesmo Item. `DELETE /items/{id}` conclui ou registra duravelmente a desconexão upstream antes da exclusão local.\n\n**Privacidade:** sempre exponha \"Desconectar banco / Revogar consentimento\". Parâmetros da autorização e respostas de MFA encaminhados ao provedor são transitórios e não ficam persistidos no Item. Não há `GET /items`; armazene ids indexados por `clientUserId`."
+    }
+  ],
+  "paths": {
+    "/auto-sync/defaults": {
+      "get": {
+        "tags": [
+          "Items"
+        ],
+        "operationId": "getAutoSyncDefaults",
+        "summary": "Consultar padrão de sincronização da aplicação",
+        "description": "Exige API key da aplicação. Tokens do Connect Widget não são aceitos. Veja o guia de configuração de sincronização automática.",
+        "responses": {
+          "200": {
+            "description": "Configuração de sincronização automática.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AutoSyncSettings"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "API key inválida ou acesso à produção bloqueado."
+          },
+          "404": {
+            "description": "Aplicação ou item não encontrado no escopo da API key."
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "Items"
+        ],
+        "operationId": "updateAutoSyncDefaults",
+        "summary": "Configurar padrão de sincronização da aplicação",
+        "description": "Exige API key da aplicação. Tokens do Connect Widget não são aceitos. Veja o guia de configuração de sincronização automática. Define o padrão dos próximos itens, criados pela API ou pelo Connect Widget. Por padrão, aplica também aos itens existentes, em uma única transação. Não altera outras aplicações.",
+        "responses": {
+          "200": {
+            "description": "Configuração de sincronização automática.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/AutoSyncSettings"
+                    },
+                    {
+                      "type": "object",
+                      "required": [
+                        "applied"
+                      ],
+                      "properties": {
+                        "applied": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "description": "Quantidade de itens existentes atualizados."
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "API key inválida ou acesso à produção bloqueado."
+          },
+          "404": {
+            "description": "Aplicação ou item não encontrado no escopo da API key."
+          },
+          "400": {
+            "description": "Corpo inválido, campos desconhecidos, ausência dos campos de configuração ou frequência diferente de 1, 2 ou 3."
+          },
+          "409": {
+            "description": "CLIENT_HAS_ITEM_UPDATES_DISABLED: atualizações bloqueadas para a aplicação."
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "anyOf": [
+                  {
+                    "required": [
+                      "autoSyncEnabled"
+                    ]
+                  },
+                  {
+                    "required": [
+                      "autoSyncFrequency"
+                    ]
+                  }
+                ],
+                "properties": {
+                  "autoSyncEnabled": {
+                    "type": "boolean"
+                  },
+                  "autoSyncFrequency": {
+                    "type": "integer",
+                    "enum": [
+                      1,
+                      2,
+                      3
+                    ]
+                  },
+                  "applyToExistingItems": {
+                    "type": "boolean",
+                    "default": true,
+                    "description": "Atualiza todos os itens existentes da aplicação junto com o padrão. Envie false para afetar apenas os próximos itens."
+                  }
+                }
+              },
+              "example": {
+                "autoSyncEnabled": true,
+                "autoSyncFrequency": 3
+              }
+            }
+          }
+        }
+      }
+    },
+    "/items/{id}/auto-sync": {
+      "get": {
+        "tags": [
+          "Items"
+        ],
+        "operationId": "getItemAutoSync",
+        "summary": "Consultar sincronização automática do item",
+        "description": "Exige API key da aplicação. Tokens do Connect Widget não são aceitos. Veja o guia de configuração de sincronização automática.",
+        "responses": {
+          "200": {
+            "description": "Configuração de sincronização automática.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ItemAutoSyncSettings"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "API key inválida ou acesso à produção bloqueado."
+          },
+          "404": {
+            "description": "Aplicação ou item não encontrado no escopo da API key."
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ]
+      },
+      "patch": {
+        "tags": [
+          "Items"
+        ],
+        "operationId": "updateItemAutoSync",
+        "summary": "Configurar sincronização automática do item",
+        "description": "Exige API key da aplicação. Tokens do Connect Widget não são aceitos. Veja o guia de configuração de sincronização automática. Altera apenas o agendamento; não dispara refresh imediato. Campos omitidos preservam o valor atual. Itens sem consentimento válido aguardam autorização antes de receber o próximo horário.",
+        "responses": {
+          "200": {
+            "description": "Configuração de sincronização automática.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ItemAutoSyncSettings"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "API key inválida ou acesso à produção bloqueado."
+          },
+          "404": {
+            "description": "Aplicação ou item não encontrado no escopo da API key."
+          },
+          "400": {
+            "description": "Corpo inválido, campos desconhecidos, ausência dos campos de configuração ou frequência diferente de 1, 2 ou 3."
+          },
+          "409": {
+            "description": "CLIENT_HAS_ITEM_UPDATES_DISABLED: atualizações bloqueadas para a aplicação."
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "anyOf": [
+                  {
+                    "required": [
+                      "autoSyncEnabled"
+                    ]
+                  },
+                  {
+                    "required": [
+                      "autoSyncFrequency"
+                    ]
+                  }
+                ],
+                "properties": {
+                  "autoSyncEnabled": {
+                    "type": "boolean"
+                  },
+                  "autoSyncFrequency": {
+                    "type": "integer",
+                    "enum": [
+                      1,
+                      2,
+                      3
+                    ]
+                  }
+                }
+              },
+              "example": {
+                "autoSyncEnabled": true,
+                "autoSyncFrequency": 3
+              }
+            }
+          }
+        }
+      }
+    },
+    "/items": {
+      "post": {
+        "tags": ["Items"],
+        "operationId": "createItem",
+        "summary": "Criar item",
+        "description": "Cria um Item para um Connector. Envie `connectorId` e somente os campos declarados em `connector.credentials`: conectores de sandbox podem pedir user/password, enquanto Connectors Open Finance usam os identificadores ou seleções de jornada anunciados pelo catálogo. A Malvo expõe exclusivamente Connectors Open Finance nas rotas operacionais; Connectors diretos não são expostos. Para retornar à sua própria aplicação, informe `oauthRedirectUri`; sem ele, o fluxo usa a finalização hospedada. A resposta traz a URL efêmera em `connector.oauthUrl` quando houver OAuth; durante a autorização, o Item usa `status=LOGIN_IN_PROGRESS` e `executionStatus=USER_AUTHORIZATION_PENDING`.\n\nNo Brasil, a carga inicial busca até 365 dias; no Open Banking internacional busca o maior histórico permitido pelo ASPSP. Use `clientUserId` estável e `avoidDuplicates: true` para reaproveitar a conexão sem duplicar o Item.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ItemCreate"
+              },
+              "examples": {
+                "directSandbox": {
+                  "summary": "Connector de sandbox (user/password)",
+                  "value": {
+                    "connectorId": 0,
+                    "parameters": {
+                      "user": "user-ok",
+                      "password": "password-ok"
+                    },
+                    "clientUserId": "my-user-42",
+                    "webhookUrl": "https://your.app/webhooks/malvo",
+                    "products": ["ACCOUNTS", "TRANSACTIONS"]
+                  }
+                },
+                "openFinanceBrazil": {
+                  "summary": "Open Finance Brasil (cpf + oauthRedirectUri)",
+                  "value": {
+                    "connectorId": 612,
+                    "parameters": {
+                      "cpf": "12345678901"
+                    },
+                    "oauthRedirectUri": "https://your.app/oauth/callback",
+                    "clientUserId": "my-user-42"
+                  }
+                },
+                "internationalOpenBanking": {
+                  "summary": "Open Banking internacional (sem credencial bancária)",
+                  "value": {
+                    "connectorId": 742,
+                    "parameters": {},
+                    "oauthRedirectUri": "https://your.app/oauth/callback",
+                    "clientUserId": "my-user-42",
+                    "avoidDuplicates": true,
+                    "products": ["ACCOUNTS", "TRANSACTIONS"]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Item criado. O corpo é o objeto Item completo (§4.1). Para connectors regulados aguardando OAuth, `status=LOGIN_IN_PROGRESS` e `executionStatus=USER_AUTHORIZATION_PENDING` até o usuário concluir o consentimento.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Item"
+                },
+                "example": {
+                  "id": "a8f4f3e1-7b2c-4d4e-8f9a-0b1c2d3e4f5a",
+                  "connector": {
+                    "id": 612,
+                    "name": "Nubank",
+                    "type": "PERSONAL_BANK",
+                    "imageUrl": "https://malvo.io/connectors/nubank.svg",
+                    "primaryColor": "820AD1",
+                    "isOpenFinance": true,
+                    "isSandbox": false,
+                    "oauth": true,
+                    "oauthUrl": "https://auth.example/authorize"
+                  },
+                  "status": "LOGIN_IN_PROGRESS",
+                  "executionStatus": "USER_AUTHORIZATION_PENDING",
+                  "createdAt": "2025-01-01T12:00:00.000Z",
+                  "updatedAt": "2025-01-01T12:00:00.000Z",
+                  "lastUpdatedAt": null,
+                  "nextAutoSyncAt": null,
+                  "clientUserId": "my-user-42",
+                  "webhookUrl": "https://your.app/webhooks/malvo",
+                  "products": ["ACCOUNTS", "TRANSACTIONS"],
+                  "consentExpiresAt": null,
+                  "consecutiveFailedLoginAttempts": 0,
+                  "statusDetail": null,
+                  "error": null,
+                  "parameter": null,
+                  "userAction": null,
+                  "oauthRedirectUri": "https://your.app/oauth/callback"
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Saldo de créditos pré-pagos zerado (`CREDITS_EXHAUSTED`). Novas conexões ficam pausadas até a recarga; os dados existentes continuam acessíveis. Ativo para contas novas desde 04/10/2026 e para as existentes a partir de 01/12/2026 — veja [Créditos pré-pagos](/dashboard/credits).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GlobalErrorResponse"
+                },
+                "example": {
+                  "code": 402,
+                  "message": "Prepaid credits exhausted",
+                  "codeDescription": "CREDITS_EXHAUSTED"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Parâmetros inválidos. O corpo traz `errors[]` com `code`, `message` e `parameter` (§2.3).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationErrorResponse"
+                },
+                "example": {
+                  "code": 400,
+                  "message": "Invalid parameters",
+                  "errors": [
+                    {
+                      "code": "INVALID_PARAMETER",
+                      "message": "cpf must match pattern ^\\d{11}$",
+                      "parameter": "cpf"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflito. `ITEM_IS_ALREADY_UPDATING`: outra requisição já está criando a autorização Open Finance deste item; repita a mesma requisição depois do `Retry-After` (o corpo traz o status atual do item em `data`). `ITEM_CREATION_LIMIT_EXCEEDED`: a aplicação atingiu o limite de itens; reutilize um item existente ou exclua itens sem uso.",
+            "headers": {
+              "Retry-After": {
+                "description": "Segundos a aguardar antes de repetir a mesma requisição. Presente em `ITEM_IS_ALREADY_UPDATING`.",
+                "schema": {
+                  "type": "integer",
+                  "example": 1
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/ItemIsAlreadyUpdatingError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/ItemConflictError"
+                    }
+                  ]
+                },
+                "examples": {
+                  "ITEM_IS_ALREADY_UPDATING": {
+                    "summary": "Outra requisição já está atualizando a conexão do item",
+                    "value": {
+                      "code": 409,
+                      "message": "Another request is already updating this item's Open Finance connection. Retry the same request after the Retry-After header (seconds); do not create a new item nor ask the user to reconnect. data.status reports the item's current state, and the item/updated and item/error webhooks report when the update finishes.",
+                      "codeDescription": "ITEM_IS_ALREADY_UPDATING",
+                      "data": {
+                        "itemId": "b1f0c6a2-3c55-4f0e-9a51-2f3d9a7c4e10",
+                        "status": "UPDATING",
+                        "executionStatus": "USER_AUTHORIZATION_PENDING",
+                        "lastUpdatedAt": "2026-10-12T13:30:00.000Z",
+                        "retryAfterSeconds": 1
+                      }
+                    }
+                  },
+                  "ITEM_CREATION_LIMIT_EXCEEDED": {
+                    "summary": "Limite de itens da aplicação",
+                    "value": {
+                      "code": 409,
+                      "message": "Item creation limit reached for this application. Reuse an existing item with PATCH /items/{id} or POST /items/{id}/refresh, or delete items no longer in use; contact support to raise the limit.",
+                      "codeDescription": "ITEM_CREATION_LIMIT_EXCEEDED"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Erro interno do servidor — repita com backoff.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GlobalErrorResponse"
+                },
+                "example": {
+                  "code": 500,
+                  "message": "Internal server error",
+                  "codeDescription": "INTERNAL_SERVER_ERROR",
+                  "data": {}
+                }
+              }
+            }
+          },
+          "501": {
+            "description": "Connector não suportado (`CONNECTOR_NOT_SUPPORTED`). Apenas connectors de sandbox e Open Finance são suportados para criação de item.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GlobalErrorResponse"
+                },
+                "example": {
+                  "code": 501,
+                  "message": "Connector not supported",
+                  "codeDescription": "CONNECTOR_NOT_SUPPORTED",
+                  "data": {}
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Open Finance indisponível (`OPEN_FINANCE_NOT_AVAILABLE`). A conectividade Open Finance está temporariamente indisponível nesta aplicação/ambiente.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GlobalErrorResponse"
+                },
+                "example": {
+                  "code": 503,
+                  "message": "Open Finance not available",
+                  "codeDescription": "OPEN_FINANCE_NOT_AVAILABLE",
+                  "data": {}
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/items/{id}": {
+      "get": {
+        "tags": ["Items"],
+        "operationId": "getItem",
+        "summary": "Consultar item",
+        "description": "Retorna o objeto Item completo. Após criar ou atualizar, faça polling deste endpoint (ou, de preferência, consuma webhooks) até o `status` sair de `UPDATING`/`LOGIN_IN_PROGRESS` — `LOGIN_IN_PROGRESS` pode levar até 5 minutos. Items deletados ou desconhecidos retornam `404` (`ITEM_NOT_FOUND`).",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "Identificador (UUID) do item.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "example": "a8f4f3e1-7b2c-4d4e-8f9a-0b1c2d3e4f5a"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Objeto Item completo (§4.1).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Item"
+                },
+                "example": {
+                  "id": "a8f4f3e1-7b2c-4d4e-8f9a-0b1c2d3e4f5a",
+                  "connector": {
+                    "id": 612,
+                    "name": "Nubank",
+                    "type": "PERSONAL_BANK",
+                    "imageUrl": "https://malvo.io/connectors/nubank.svg",
+                    "primaryColor": "820AD1",
+                    "isOpenFinance": true,
+                    "isSandbox": false
+                  },
+                  "status": "UPDATED",
+                  "executionStatus": "SUCCESS",
+                  "createdAt": "2025-01-01T12:00:00.000Z",
+                  "updatedAt": "2025-01-02T08:00:00.000Z",
+                  "lastUpdatedAt": "2025-01-02T08:00:00.000Z",
+                  "nextAutoSyncAt": "2025-01-03T08:00:00.000Z",
+                  "clientUserId": "my-user-42",
+                  "webhookUrl": "https://your.app/webhooks/malvo",
+                  "products": ["ACCOUNTS", "CREDIT_CARDS", "TRANSACTIONS"],
+                  "consentExpiresAt": null,
+                  "consecutiveFailedLoginAttempts": 0,
+                  "statusDetail": {
+                    "accounts": { "isUpdated": true, "lastUpdatedAt": "2025-01-02T08:00:00.000Z", "warnings": [] },
+                    "creditCards": { "isUpdated": true, "lastUpdatedAt": "2025-01-02T08:00:00.000Z", "warnings": [] },
+                    "transactions": {
+                      "isUpdated": false,
+                      "lastUpdatedAt": "2025-01-01T08:00:00.000Z",
+                      "warnings": [
+                        { "code": "423", "message": "Open Finance monthly rate limit reached for transactions", "providerMessage": null }
+                      ]
+                    },
+                    "investments": null,
+                    "identity": null,
+                    "paymentData": null
+                  },
+                  "error": null,
+                  "parameter": null,
+                  "userAction": null,
+                  "oauthRedirectUri": null
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Item desconhecido ou deletado.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GlobalErrorResponse"
+                },
+                "example": {
+                  "code": 404,
+                  "message": "Item not found",
+                  "codeDescription": "ITEM_NOT_FOUND"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": ["Items"],
+        "operationId": "updateItem",
+        "summary": "Atualizar item / renovar autorização",
+        "description": "Dispara uma atualização do item. Todos os campos são opcionais; um corpo `{}` dispara um re-sync simples. Use `parameters` para enviar os identificadores ou seleções anunciados em `connector.credentials` e/ou valores de MFA, `products` para ajustar o conjunto de produtos coletados daqui em diante, `webhookUrl` para alterar o destino de webhook e `clientUserId` para atualizar o vínculo. Quando a atualização inicia um novo consentimento, a resposta inclui a URL efêmera em `connector.oauthUrl`.\n\nUm item Open Finance saudável reaproveita o consentimento vigente: a atualização vira um re-sync simples e a resposta **não** traz `connector.oauthUrl`. Para um botão de \"reconectar\" acionado pelo usuário, envie `reconsent: true` — assim um novo consentimento é emitido mesmo quando o item ainda parece ativo aqui, o que cobre o consentimento derrubado no banco que ainda não foi observado.\n\n**Rate limit: 20 requisições/min por IP — o limite mais baixo da API.** Este endpoint é apenas para atualizações **disparadas pelo usuário**; fluxos de atualização em massa/lote não são permitidos e são limitados (`ITEM_CREATION_LIMIT_EXCEEDED`). Atualizações periódicas devem usar o auto-sync. Se o banco exigir autenticação nova ou MFA, o item transiciona para `WAITING_USER_INPUT` até o usuário responder.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "Identificador (UUID) do item.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "example": "a8f4f3e1-7b2c-4d4e-8f9a-0b1c2d3e4f5a"
+          }
+        ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ItemUpdate"
+              },
+              "example": {
+                "parameters": {
+                  "cpf": "12345678901"
+                },
+                "products": ["ACCOUNTS", "TRANSACTIONS"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Item agora em `UPDATING` ou, quando um novo consentimento foi iniciado, em `LOGIN_IN_PROGRESS` com a URL efêmera em `connector.oauthUrl`. O corpo é o objeto Item completo (§4.1).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Item"
+                },
+                "example": {
+                  "id": "a8f4f3e1-7b2c-4d4e-8f9a-0b1c2d3e4f5a",
+                  "connector": {
+                    "id": 612,
+                    "name": "Nubank",
+                    "type": "PERSONAL_BANK",
+                    "imageUrl": "https://malvo.io/connectors/nubank.svg",
+                    "primaryColor": "820AD1",
+                    "isOpenFinance": true,
+                    "isSandbox": false
+                  },
+                  "status": "UPDATING",
+                  "executionStatus": "CREATED",
+                  "createdAt": "2025-01-01T12:00:00.000Z",
+                  "updatedAt": "2025-01-02T09:00:00.000Z",
+                  "lastUpdatedAt": "2025-01-02T08:00:00.000Z",
+                  "nextAutoSyncAt": "2025-01-03T08:00:00.000Z",
+                  "clientUserId": "my-user-42",
+                  "webhookUrl": "https://your.app/webhooks/malvo",
+                  "products": ["ACCOUNTS", "TRANSACTIONS"],
+                  "consentExpiresAt": null,
+                  "consecutiveFailedLoginAttempts": 0,
+                  "statusDetail": null,
+                  "error": null,
+                  "parameter": null,
+                  "userAction": null,
+                  "oauthRedirectUri": null
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validação (`errors[]`) ou `ITEM_ORIGINAL_CONNECTED_WITH_DIFFERENT_ACCOUNT` (usuário deve reconectar com a conta original).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationErrorResponse"
+                },
+                "example": {
+                  "code": 400,
+                  "message": "Invalid parameters",
+                  "errors": [
+                    {
+                      "code": "INVALID_PARAMETER",
+                      "message": "cpf must match pattern ^\\d{11}$",
+                      "parameter": "cpf"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Item desconhecido ou deletado.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GlobalErrorResponse"
+                },
+                "example": {
+                  "code": 404,
+                  "message": "Item not found",
+                  "codeDescription": "ITEM_NOT_FOUND"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflito. `ITEM_IS_ALREADY_UPDATING`: outra requisição já está atualizando a conexão Open Finance deste item; repita a mesma requisição depois do `Retry-After`, sem criar item novo nem pedir reconexão. O corpo traz `data.status`, `data.executionStatus`, `data.lastUpdatedAt` e `data.retryAfterSeconds`; os webhooks `item/updated` e `item/error` avisam quando a atualização termina. `CLIENT_HAS_ITEM_UPDATES_DISABLED`: atualizações bloqueadas para a aplicação; repetir não resolve, fale com o suporte.",
+            "headers": {
+              "Retry-After": {
+                "description": "Segundos a aguardar antes de repetir a mesma requisição. Presente em `ITEM_IS_ALREADY_UPDATING`.",
+                "schema": {
+                  "type": "integer",
+                  "example": 1
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/ItemIsAlreadyUpdatingError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/ItemConflictError"
+                    }
+                  ]
+                },
+                "examples": {
+                  "ITEM_IS_ALREADY_UPDATING": {
+                    "summary": "Outra requisição já está atualizando a conexão do item",
+                    "value": {
+                      "code": 409,
+                      "message": "Another request is already updating this item's Open Finance connection. Retry the same request after the Retry-After header (seconds); do not create a new item nor ask the user to reconnect. data.status reports the item's current state, and the item/updated and item/error webhooks report when the update finishes.",
+                      "codeDescription": "ITEM_IS_ALREADY_UPDATING",
+                      "data": {
+                        "itemId": "b1f0c6a2-3c55-4f0e-9a51-2f3d9a7c4e10",
+                        "status": "UPDATING",
+                        "executionStatus": "USER_AUTHORIZATION_PENDING",
+                        "lastUpdatedAt": "2026-10-12T13:30:00.000Z",
+                        "retryAfterSeconds": 1
+                      }
+                    }
+                  },
+                  "CLIENT_HAS_ITEM_UPDATES_DISABLED": {
+                    "summary": "Atualizações desativadas para a aplicação",
+                    "value": {
+                      "code": 409,
+                      "message": "Item updates are disabled for this application by Malvo. Retrying will not help and data already collected stays readable; contact support to re-enable updates.",
+                      "codeDescription": "CLIENT_HAS_ITEM_UPDATES_DISABLED"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Limite de 20 requisições/min por IP excedido (veja o header `Retry-After` em segundos).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GlobalErrorResponse"
+                },
+                "example": {
+                  "code": 429,
+                  "message": "Too many requests. Please try again later (see Retry-After header in seconds)",
+                  "codeDescription": "TOO_MANY_REQUESTS",
+                  "data": {}
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": ["Items"],
+        "operationId": "deleteItem",
+        "summary": "Deletar item / revogar consentimento",
+        "description": "Remove o item e revoga o consentimento Open Finance correspondente. Após a deleção, `GET /items/{id}` retorna `404` e **todos os dados vinculados (contas, transações, etc.) tornam-se permanentemente inacessíveis pela API**.\n\n**LGPD / Open Finance (obrigatório):** integradores devem sempre expor uma ação \"Desconectar banco / Revogar consentimento\" que chama este endpoint, sempre disponível ao usuário, para conformidade com a regulação de Open Banking. O usuário ainda pode revogar o registro de consentimento separadamente do lado do banco.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "Identificador (UUID) do item.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "example": "a8f4f3e1-7b2c-4d4e-8f9a-0b1c2d3e4f5a"
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Item deletado com sucesso. Sem conteúdo."
+          },
+          "404": {
+            "description": "Item desconhecido ou já deletado.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GlobalErrorResponse"
+                },
+                "example": {
+                  "code": 404,
+                  "message": "Item not found",
+                  "codeDescription": "ITEM_NOT_FOUND"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/items/{id}/disable-auto-sync": {
+      "patch": {
+        "tags": ["Items"],
+        "operationId": "disableItemAutoSync",
+        "summary": "Desativar auto-sync do item",
+        "description": "Desativa as atualizações automáticas deste Item. O Item e os dados já persistidos permanecem disponíveis; `nextAutoSyncAt` passa a `null`. Atualizações manuais continuam disponíveis.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "Identificador (UUID) do item.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "example": "a8f4f3e1-7b2c-4d4e-8f9a-0b1c2d3e4f5a"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Auto-sync desativado. Retorna o Item atualizado com `nextAutoSyncAt=null`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Item"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Item desconhecido ou deletado.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GlobalErrorResponse"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "O Open Finance não confirmou a desativação; tente novamente com backoff.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GlobalErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/items/{id}/refresh": {
+      "post": {
+        "tags": ["Items"],
+        "operationId": "refreshItem",
+        "summary": "Refresh simples do item",
+        "description": "Dispara um re-sync sem alterar credenciais. Corpo vazio. No Open Finance brasileiro, a execução sempre avalia a janela corrente de transações (aproximadamente os últimos 7 dias) e consulta o provedor imediatamente enquanto houver capacidade no balde diário daquela rota e recurso. Não existe intervalo entre as chamadas permitidas: em uma capacidade de 10 chamadas/dia, as chamadas 1 a 10 podem ser consecutivas e somente a 11ª fica bloqueada até a virada do dia brasileiro. O contador independe da configuração de auto-sync, embora auto-sync e refresh manual compartilhem a capacidade efetivamente consumida no Open Finance. A cota mensal absoluta e o cooldown da instituição continuam valendo; quando o balde diário está esgotado, mantém o último valor coletado. Não responde `409` por sincronização em andamento: chamadas repetidas se juntam numa única execução; o `409` aqui é só `ITEM_NEEDS_RECONSENT` ou `CLIENT_HAS_ITEM_UPDATES_DISABLED`. Prefira este endpoint (ou `PATCH`) a criar um item novo — items novos consomem cota da rede Open Finance.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "Identificador (UUID) do item.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "example": "a8f4f3e1-7b2c-4d4e-8f9a-0b1c2d3e4f5a"
+          }
+        ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false
+              },
+              "example": {}
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Item agora em `UPDATING`. O corpo é o objeto Item completo (§4.1).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Item"
+                },
+                "example": {
+                  "id": "a8f4f3e1-7b2c-4d4e-8f9a-0b1c2d3e4f5a",
+                  "connector": {
+                    "id": 612,
+                    "name": "Nubank",
+                    "type": "PERSONAL_BANK",
+                    "imageUrl": "https://malvo.io/connectors/nubank.svg",
+                    "primaryColor": "820AD1",
+                    "isOpenFinance": true,
+                    "isSandbox": false
+                  },
+                  "status": "UPDATING",
+                  "executionStatus": "CREATED",
+                  "createdAt": "2025-01-01T12:00:00.000Z",
+                  "updatedAt": "2025-01-02T09:30:00.000Z",
+                  "lastUpdatedAt": "2025-01-02T08:00:00.000Z",
+                  "nextAutoSyncAt": "2025-01-03T08:00:00.000Z",
+                  "clientUserId": "my-user-42",
+                  "webhookUrl": "https://your.app/webhooks/malvo",
+                  "products": ["ACCOUNTS", "CREDIT_CARDS", "TRANSACTIONS"],
+                  "consentExpiresAt": null,
+                  "consecutiveFailedLoginAttempts": 0,
+                  "statusDetail": null,
+                  "error": null,
+                  "parameter": null,
+                  "userAction": null,
+                  "oauthRedirectUri": null
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflito. O refresh nunca responde 409 por sincronização em andamento: chamadas repetidas se juntam numa única execução. `ITEM_NEEDS_RECONSENT`: o consentimento não está autorizado; reconecte com `PATCH /items/{id}` e `{\"reconsent\": true}`. `CLIENT_HAS_ITEM_UPDATES_DISABLED`: atualizações bloqueadas para a aplicação; fale com o suporte.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GlobalErrorResponse"
+                },
+                "examples": {
+                  "ITEM_NEEDS_RECONSENT": {
+                    "summary": "Consentimento sem autorização",
+                    "value": {
+                      "code": 409,
+                      "message": "Item consent is not authorized; a new consent is required. Reconnect the item with PATCH /items/{id} and {\"reconsent\": true}, then send the user to connector.oauthUrl; refreshing again will not help.",
+                      "codeDescription": "ITEM_NEEDS_RECONSENT"
+                    }
+                  },
+                  "CLIENT_HAS_ITEM_UPDATES_DISABLED": {
+                    "summary": "Atualizações desativadas para a aplicação",
+                    "value": {
+                      "code": 409,
+                      "message": "Item updates are disabled for this application by Malvo. Retrying will not help and data already collected stays readable; contact support to re-enable updates.",
+                      "codeDescription": "CLIENT_HAS_ITEM_UPDATES_DISABLED"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/items/{id}/mfa": {
+      "post": {
+        "tags": ["Items"],
+        "operationId": "submitItemMfa",
+        "summary": "Enviar token MFA",
+        "description": "Envia um token de MFA de dois fatores. Usado quando `status = WAITING_USER_INPUT` / `executionStatus = WAITING_USER_INPUT`; o campo `parameter` do item descreve a entrada esperada. Em sucesso, a execução retoma (`LOGIN_MFA_IN_PROGRESS`). Token errado/expirado leva ao `executionStatus` final `INVALID_CREDENTIALS_MFA`.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "Identificador (UUID) do item.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "example": "a8f4f3e1-7b2c-4d4e-8f9a-0b1c2d3e4f5a"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ItemMfa"
+              },
+              "example": {
+                "parameters": {
+                  "token": "123456"
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Execução retomada (`LOGIN_MFA_IN_PROGRESS`). O corpo é o objeto Item completo (§4.1).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Item"
+                },
+                "example": {
+                  "id": "a8f4f3e1-7b2c-4d4e-8f9a-0b1c2d3e4f5a",
+                  "connector": {
+                    "id": 612,
+                    "name": "Nubank",
+                    "type": "PERSONAL_BANK",
+                    "imageUrl": "https://malvo.io/connectors/nubank.svg",
+                    "primaryColor": "820AD1",
+                    "isOpenFinance": true,
+                    "isSandbox": false
+                  },
+                  "status": "UPDATING",
+                  "executionStatus": "LOGIN_MFA_IN_PROGRESS",
+                  "createdAt": "2025-01-01T12:00:00.000Z",
+                  "updatedAt": "2025-01-01T12:01:30.000Z",
+                  "lastUpdatedAt": null,
+                  "nextAutoSyncAt": null,
+                  "clientUserId": "my-user-42",
+                  "webhookUrl": "https://your.app/webhooks/malvo",
+                  "products": ["ACCOUNTS", "TRANSACTIONS"],
+                  "consentExpiresAt": null,
+                  "consecutiveFailedLoginAttempts": 0,
+                  "statusDetail": null,
+                  "error": null,
+                  "parameter": null,
+                  "userAction": null,
+                  "oauthRedirectUri": null
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "O item não está aguardando entrada do usuário.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GlobalErrorResponse"
+                },
+                "example": {
+                  "code": 400,
+                  "message": "Item is not waiting for user input",
+                  "data": {}
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Item desconhecido.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GlobalErrorResponse"
+                },
+                "example": {
+                  "code": 404,
+                  "message": "Item not found",
+                  "codeDescription": "ITEM_NOT_FOUND"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "apiKeyAuth": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "X-API-KEY",
+        "description": "Chave de API (`apiKey`, TTL ~2h) obtida via `POST /auth`. Enviada no header `X-API-KEY`."
+      }
+    },
+    "schemas": {
+      "AutoSyncSettings": {
+        "type": "object",
+        "required": [
+          "autoSyncEnabled",
+          "autoSyncFrequency"
+        ],
+        "properties": {
+          "autoSyncEnabled": {
+            "type": "boolean"
+          },
+          "autoSyncFrequency": {
+            "type": "integer",
+            "enum": [
+              1,
+              2,
+              3
+            ]
+          }
+        }
+      },
+      "ItemAutoSyncSettings": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/AutoSyncSettings"
+          },
+          {
+            "type": "object",
+            "required": [
+              "nextAutoSyncAt"
+            ],
+            "properties": {
+              "nextAutoSyncAt": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "format": "date-time",
+                "description": "Próxima execução em UTC; null quando desativado ou aguardando consentimento."
+              }
+            }
+          }
+        ]
+      },
+      "StatusEnum": {
+        "type": "string",
+        "description": "Estado do item (nível do item).\n\n- `CREATING`: registro criado, execução ainda não iniciada (não terminal).\n- `UPDATING`: conexão sincronizando com o provedor (não terminal).\n- `LOGIN_IN_PROGRESS`: autenticando na instituição (não terminal).\n- `WAITING_USER_INPUT`: pausado aguardando uma entrada do usuário, tipicamente token MFA.\n- `WAITING_USER_ACTION`: pausado aguardando uma ação fora do formulário, como aprovar no aplicativo da instituição.\n- `UPDATED`: último sync concluído com sucesso (possivelmente parcial — verifique `executionStatus` e `statusDetail`); terminal até o próximo sync.\n- `OUTDATED`: parâmetros validados mas a execução falhou; retriável; terminal até nova tentativa.\n- `LOGIN_ERROR`: credenciais inválidas; o usuário deve reautenticar; terminal até atualizar as credenciais.",
+        "enum": [
+          "CREATING",
+          "UPDATING",
+          "LOGIN_IN_PROGRESS",
+          "WAITING_USER_INPUT",
+          "WAITING_USER_ACTION",
+          "UPDATED",
+          "OUTDATED",
+          "LOGIN_ERROR"
+        ]
+      },
+      "ExecutionStatusEnum": {
+        "type": "string",
+        "description": "Estado detalhado da última execução.\n\n**Transitivos (em andamento):** `CREATED` (execução na fila), `LOGIN_IN_PROGRESS` (autenticando, até 5 minutos), `LOGIN_MFA_IN_PROGRESS` (validando token MFA), `ACCOUNTS_IN_PROGRESS` (coletando contas), `CREDITCARDS_IN_PROGRESS` (coletando cartões), `TRANSACTIONS_IN_PROGRESS` (coletando transações), `INVESTMENT_TRANSACTIONS_IN_PROGRESS` (coletando transações de investimento), `PAYMENT_DATA_IN_PROGRESS` (coletando metadados de pagamento das transações — ainda agregação de dados, NÃO iniciação), `IDENTITY_IN_PROGRESS` (coletando identidade), `MERGING` (analisando e armazenando dados coletados).\n\n**Intermediários (bloqueados):** `WAITING_USER_INPUT` (aguardando entrada do usuário — tipicamente token MFA), `WAITING_USER_ACTION` (aguardando ação na instituição) e `USER_AUTHORIZATION_PENDING` (aguardando autorização — aprovação de dispositivo ou redirect regulado ainda não concluído).\n\n**Finais — sucesso:** `SUCCESS` (todos os produtos solicitados recuperados), `PARTIAL_SUCCESS` (alguns produtos falharam — inspecione `statusDetail` por produto).\n\n**Finais — erro:** `ERROR` (erro de conexão inesperado), `MERGE_ERROR` (dados coletados mas falha ao armazenar/mesclar), `INVALID_CREDENTIALS` (autenticação falhou), `INVALID_CREDENTIALS_MFA` (token MFA incorreto ou expirado), `USER_INPUT_TIMEOUT` (a entrada pedida ao usuário expirou), `ALREADY_LOGGED_IN` (sessão ativa na instituição bloqueia novo login), `SITE_NOT_AVAILABLE` (instituição fora do ar), `ACCOUNT_LOCKED` (conta bloqueada na instituição), `ACCOUNT_NEEDS_ACTION` (ação manual necessária na instituição — veja `userAction`), `ACCOUNT_CREDENTIALS_RESET` (instituição força reset de senha), `USER_NOT_SUPPORTED` (tipo de conta não suportado pelo connector), `CONNECTION_ERROR` (não foi possível alcançar a instituição), `USER_AUTHORIZATION_NOT_GRANTED` (usuário rejeitou o consentimento), `USER_AUTHORIZATION_REVOKED` (usuário revogou o consentimento na instituição).",
+        "enum": [
+          "CREATED",
+          "LOGIN_IN_PROGRESS",
+          "LOGIN_MFA_IN_PROGRESS",
+          "ACCOUNTS_IN_PROGRESS",
+          "CREDITCARDS_IN_PROGRESS",
+          "TRANSACTIONS_IN_PROGRESS",
+          "INVESTMENT_TRANSACTIONS_IN_PROGRESS",
+          "PAYMENT_DATA_IN_PROGRESS",
+          "IDENTITY_IN_PROGRESS",
+          "MERGING",
+          "WAITING_USER_INPUT",
+          "WAITING_USER_ACTION",
+          "SUCCESS",
+          "PARTIAL_SUCCESS",
+          "ERROR",
+          "MERGE_ERROR",
+          "INVALID_CREDENTIALS",
+          "INVALID_CREDENTIALS_MFA",
+          "USER_INPUT_TIMEOUT",
+          "ALREADY_LOGGED_IN",
+          "SITE_NOT_AVAILABLE",
+          "ACCOUNT_LOCKED",
+          "ACCOUNT_NEEDS_ACTION",
+          "ACCOUNT_CREDENTIALS_RESET",
+          "USER_NOT_SUPPORTED",
+          "CONNECTION_ERROR",
+          "USER_AUTHORIZATION_PENDING",
+          "USER_AUTHORIZATION_NOT_GRANTED",
+          "USER_AUTHORIZATION_REVOKED"
+        ]
+      },
+      "ItemConnector": {
+        "type": "object",
+        "description": "Connector embutido no Item. Na criação/reconsentimento OAuth, oauthUrl contém a URL efêmera de autorização.",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "description": "Identificador do connector."
+          },
+          "name": {
+            "type": "string",
+            "description": "Nome da instituição."
+          },
+          "type": {
+            "type": "string",
+            "description": "Tipo do connector (ex.: `PERSONAL_BANK`)."
+          },
+          "country": {
+            "type": "string",
+            "description": "País ISO-3166-1 alpha-2 do connector."
+          },
+          "credentials": {
+            "type": "array",
+            "description": "Entradas declaradas pelo connector. No fluxo internacional normalmente é vazio; quando necessário, pode conter o select authMethod, que escolhe uma jornada sem coletar senha bancária.",
+            "items": { "type": "object" }
+          },
+          "products": {
+            "type": "array",
+            "description": "Produtos anunciados pelo connector.",
+            "items": { "type": "string" }
+          },
+          "imageUrl": {
+            "type": "string",
+            "format": "uri",
+            "description": "URL do logo do connector."
+          },
+          "primaryColor": {
+            "type": "string",
+            "description": "Cor primária da marca (hex sem `#`)."
+          },
+          "isOpenFinance": {
+            "type": "boolean",
+            "description": "Indica conector regulado de Open Finance/Open Banking."
+          },
+          "isSandbox": {
+            "type": "boolean",
+            "description": "Indica se o connector é de sandbox."
+          },
+          "oauth": {
+            "type": "boolean",
+            "description": "Indica se a conexão exige redirect."
+          },
+          "oauthUrl": {
+            "type": ["string", "null"],
+            "description": "URL efêmera de autorização na criação/reconsentimento; null fora desse contexto."
+          }
+        },
+        "required": ["id", "name", "type"],
+        "example": {
+          "id": 612,
+          "name": "Nubank",
+          "type": "PERSONAL_BANK",
+          "imageUrl": "https://malvo.io/connectors/nubank.svg",
+          "primaryColor": "820AD1",
+          "isOpenFinance": true,
+          "isSandbox": false
+        }
+      },
+      "ProductStatusDetail": {
+        "type": "object",
+        "description": "Detalhe de atualização de um produto. `null` quando o produto não é coletado por este item.",
+        "properties": {
+          "isUpdated": {
+            "type": "boolean",
+            "description": "Se o produto foi atualizado nesta execução."
+          },
+          "lastUpdatedAt": {
+            "type": ["string", "null"],
+            "format": "date-time",
+            "description": "Horário da última atualização bem-sucedida deste produto."
+          },
+          "warnings": {
+            "type": "array",
+            "description": "Avisos do produto. Aparecem quando o produto falhou ao atualizar (`isUpdated: false`) ou quando atualizou mas uma ação adicional do usuário melhoraria os dados.",
+            "items": {
+              "$ref": "#/components/schemas/ProductWarning"
+            }
+          }
+        },
+        "required": ["isUpdated", "warnings"]
+      },
+      "ProductWarning": {
+        "type": "object",
+        "description": "Aviso de produto. No Brasil, códigos têm prefixos por família e a cota mensal usa `423`. No fluxo internacional, falhas parciais usam `PROVIDER_PARTIAL`. Conectores de sandbox podem usar `001`/`002`/`003`.",
+        "properties": {
+          "code": {
+            "type": "string",
+            "description": "Código do aviso."
+          },
+          "message": {
+            "type": "string",
+            "description": "Descrição do aviso (inglês)."
+          },
+          "providerMessage": {
+            "type": ["string", "null"],
+            "description": "Mensagem original da instituição (geralmente em português)."
+          }
+        },
+        "required": ["code", "message"]
+      },
+      "StatusDetail": {
+        "type": "object",
+        "description": "Detalhamento de atualização por família de produto. Cada chave é `null` (produto não coletado por este item) ou um objeto `ProductStatusDetail`. O próprio `statusDetail` é `null` até a primeira execução completar.",
+        "properties": {
+          "accounts": {
+            "oneOf": [
+              { "$ref": "#/components/schemas/ProductStatusDetail" },
+              { "type": "null" }
+            ],
+            "description": "Detalhe de contas."
+          },
+          "creditCards": {
+            "oneOf": [
+              { "$ref": "#/components/schemas/ProductStatusDetail" },
+              { "type": "null" }
+            ],
+            "description": "Detalhe de cartões de crédito."
+          },
+          "transactions": {
+            "oneOf": [
+              { "$ref": "#/components/schemas/ProductStatusDetail" },
+              { "type": "null" }
+            ],
+            "description": "Detalhe de transações."
+          },
+          "investments": {
+            "oneOf": [
+              { "$ref": "#/components/schemas/ProductStatusDetail" },
+              { "type": "null" }
+            ],
+            "description": "Detalhe de investimentos."
+          },
+          "identity": {
+            "oneOf": [
+              { "$ref": "#/components/schemas/ProductStatusDetail" },
+              { "type": "null" }
+            ],
+            "description": "Detalhe de identidade."
+          },
+          "paymentData": {
+            "oneOf": [
+              { "$ref": "#/components/schemas/ProductStatusDetail" },
+              { "type": "null" }
+            ],
+            "description": "Detalhe de metadados de pagamento das transações."
+          },
+          "loans": {
+            "oneOf": [
+              { "$ref": "#/components/schemas/ProductStatusDetail" },
+              { "type": "null" }
+            ],
+            "description": "Detalhe de empréstimos."
+          },
+          "investmentsTransactions": {
+            "oneOf": [
+              { "$ref": "#/components/schemas/ProductStatusDetail" },
+              { "type": "null" }
+            ],
+            "description": "Detalhe de transações de investimento."
+          }
+        }
+      },
+      "ItemError": {
+        "type": "object",
+        "description": "Presente quando a última execução terminou em erro; `null` caso contrário.",
+        "properties": {
+          "code": {
+            "type": "string",
+            "description": "Classificação do erro (espelha os valores finais de erro de `executionStatus`)."
+          },
+          "message": {
+            "type": "string",
+            "description": "Descrição legível (inglês)."
+          },
+          "providerMessage": {
+            "type": ["string", "null"],
+            "description": "Mensagem literal da instituição (geralmente em português)."
+          },
+          "attributes": {
+            "type": ["object", "null"],
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "Contexto adicional (ex.: nomes de dispositivos em fluxos de autorização de dispositivo)."
+          }
+        },
+        "required": ["code", "message"],
+        "example": {
+          "code": "INVALID_CREDENTIALS",
+          "message": "The provided credentials are incorrect",
+          "providerMessage": "Senha inválida. Você tem mais 2 tentativas.",
+          "attributes": { "remainingAttempts": "2" }
+        }
+      },
+      "ItemParameter": {
+        "type": "object",
+        "description": "Quando `status = WAITING_USER_INPUT`: descritor da credencial (shape de §3.4) que o usuário deve preencher agora (ex.: o campo do token MFA, incluindo `expiresAt` quando o desafio é temporizado). `null` caso contrário.",
+        "additionalProperties": true
+      },
+      "UserAction": {
+        "type": "object",
+        "description": "Ação externa exigida enquanto o Item está em `WAITING_USER_ACTION`, `USER_AUTHORIZATION_PENDING` ou `ACCOUNT_NEEDS_ACTION`.",
+        "properties": {
+          "instructions": {
+            "type": "string",
+            "description": "O que o usuário deve fazer na instituição."
+          },
+          "attributes": {
+            "type": "object",
+            "additionalProperties": true,
+            "description": "Atributos adicionais da ação."
+          },
+          "expiresAt": {
+            "type": ["string", "null"],
+            "format": "date-time",
+            "description": "Prazo da ação quando informado pela instituição."
+          }
+        },
+        "required": ["instructions"]
+      },
+      "Item": {
+        "type": "object",
+        "description": "Objeto Item completo (§4.1).",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Identificador do item. Sempre inclua-o ao reportar problemas — o suporte não investiga sem ele."
+          },
+          "connector": {
+            "$ref": "#/components/schemas/ItemConnector"
+          },
+          "status": {
+            "$ref": "#/components/schemas/StatusEnum"
+          },
+          "executionStatus": {
+            "$ref": "#/components/schemas/ExecutionStatusEnum"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Horário de criação do item."
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Última mutação do registro do item."
+          },
+          "lastUpdatedAt": {
+            "type": ["string", "null"],
+            "format": "date-time",
+            "description": "Horário de conclusão do último sync bem-sucedido; `null` até o primeiro sucesso. Âncora do delta-sync."
+          },
+          "nextAutoSyncAt": {
+            "type": ["string", "null"],
+            "format": "date-time",
+            "description": "Próximo auto-sync agendado; `null` quando o auto-sync está desativado para este item/plano."
+          },
+          "clientUserId": {
+            "type": ["string", "null"],
+            "description": "Eco do identificador de usuário fornecido pelo caller."
+          },
+          "webhookUrl": {
+            "type": ["string", "null"],
+            "format": "uri",
+            "description": "Destino de webhook específico do item."
+          },
+          "products": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Produtos que este item coleta."
+          },
+          "consentExpiresAt": {
+            "type": ["string", "null"],
+            "format": "date-time",
+            "description": "Expiração conhecida do consentimento/sessão. No fluxo internacional, respeita a validade máxima informada pelo ASPSP."
+          },
+          "consecutiveFailedLoginAttempts": {
+            "type": "integer",
+            "description": "Contagem de execuções de login que falharam consecutivamente; volta a `0` em login bem-sucedido. Usado pelos clientes para parar de insistir e solicitar ação ao usuário."
+          },
+          "statusDetail": {
+            "oneOf": [
+              { "$ref": "#/components/schemas/StatusDetail" },
+              { "type": "null" }
+            ],
+            "description": "Detalhamento por produto (§4.4). `null` até a primeira execução completar."
+          },
+          "error": {
+            "oneOf": [
+              { "$ref": "#/components/schemas/ItemError" },
+              { "type": "null" }
+            ],
+            "description": "Presente quando a última execução terminou em erro. `null` caso contrário."
+          },
+          "parameter": {
+            "oneOf": [
+              { "$ref": "#/components/schemas/ItemParameter" },
+              { "type": "null" }
+            ],
+            "description": "Descritor da credencial pendente quando `status = WAITING_USER_INPUT`. `null` caso contrário."
+          },
+          "userAction": {
+            "oneOf": [
+              { "$ref": "#/components/schemas/UserAction" },
+              { "type": "null" }
+            ],
+            "description": "Presente quando a instituição exige uma ação externa para continuar; `null` caso contrário."
+          },
+          "oauthRedirectUri": {
+            "type": ["string", "null"],
+            "description": "Eco da URI de redirect quando fornecida (fluxos OF)."
+          }
+        },
+        "required": [
+          "id",
+          "connector",
+          "status",
+          "executionStatus",
+          "createdAt",
+          "updatedAt",
+          "products",
+          "consecutiveFailedLoginAttempts"
+        ]
+      },
+      "ItemCreate": {
+        "type": "object",
+        "description": "Corpo de criação de item (`POST /items`).",
+        "properties": {
+          "connectorId": {
+            "type": "integer",
+            "description": "Id do connector (de `GET /connectors`)."
+          },
+          "parameters": {
+            "type": "object",
+            "additionalProperties": true,
+            "description": "Pares exigidos por `connector.credentials`. No Brasil normalmente use CPF/CNPJ; em jornadas sem entrada prévia use `{}` salvo quando o Connector anunciar uma seleção de método. As rotas operacionais aceitam somente Connectors Open Finance, nunca credenciais de Connectors diretos. Nomes iniciados por `_` são reservados."
+          },
+          "clientUserId": {
+            "type": "string",
+            "description": "Identificador estável do usuário no sistema integrador. Recomendado nas rotas de compatibilidade e internacional para correlação e avoidDuplicates."
+          },
+          "webhookUrl": {
+            "type": "string",
+            "format": "uri",
+            "description": "Notificado nos eventos deste item (`item/created`, `item/updated`, `item/error`, `item/waiting_user_input`, `item/waiting_user_action`, `item/login_succeeded`, `transactions/*`)."
+          },
+          "oauthRedirectUri": {
+            "type": "string",
+            "format": "uri",
+            "description": "Destino final depois do callback Malvo. Use HTTPS absoluto ou deep link de esquema seguro; a Malvo anexa itemId/status/message e, quando o redirect veio de um Connect Token, o malvoFlowId reservado."
+          },
+          "products": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Subconjunto anunciado por connector.products. Os conectores podem oferecer ACCOUNTS, TRANSACTIONS, CREDIT_CARDS, INVESTMENTS, INVESTMENTS_TRANSACTIONS, IDENTITY e LOANS; quando TRANSACTIONS é solicitado, a Malvo também ativa internamente PAYMENT_DATA se o Connector oferecer esse enriquecimento. O Open Banking internacional oferece ACCOUNTS e TRANSACTIONS."
+          },
+          "avoidDuplicates": {
+            "type": "boolean",
+            "description": "Se `true`, reutiliza uma conexão existente da mesma instituição/documento; nas rotas de compatibilidade e internacional, usa clientUserId quando ainda não existe CPF/CNPJ."
+          }
+        },
+        "required": ["connectorId", "parameters"]
+      },
+      "ItemUpdate": {
+        "type": "object",
+        "description": "Corpo de atualização de item (`PATCH /items/{id}`). Todos os campos são opcionais; `{}` dispara um re-sync simples.",
+        "properties": {
+          "parameters": {
+            "type": "object",
+            "additionalProperties": true,
+            "description": "Identificadores ou seleções anunciados em `connector.credentials` e/ou valores de MFA. Na primeira adoção de um snapshot importado, CPF/CNPJ omitido pode ser recuperado das contas quando houver um único documento compatível; casos ambíguos continuam exigindo o campo explícito."
+          },
+          "webhookUrl": {
+            "type": "string",
+            "format": "uri",
+            "description": "Atualiza o destino de webhook do item."
+          },
+          "oauthRedirectUri": {
+            "type": "string",
+            "format": "uri",
+            "description": "Atualiza o destino final do OAuth. HTTPS ou deep link seguro."
+          },
+          "connectorId": {
+            "type": "integer",
+            "description": "Conector Open Finance para adoção/reconexão de snapshot importado; não use para trocar uma conexão nativa de banco."
+          },
+          "reconsent": {
+            "type": "boolean",
+            "description": "Força um novo consentimento Open Finance mesmo que o item ainda pareça saudável, retornando uma nova `connector.oauthUrl`. Use quando o usuário final pedir para reconectar: um consentimento derrubado no banco pode continuar lendo como ativo aqui até a releitura no detentor confirmar o contrário, e sem esta flag o PATCH degrada para um re-sync simples e responde sem URL de autorização. Ignorado em conectores sandbox/diretos, que não emitem consentimento."
+          }
+        }
+      },
+      "ItemMfa": {
+        "type": "object",
+        "description": "Corpo de envio de token MFA (`POST /items/{id}/mfa`). O token vai aninhado dentro de `parameters`.",
+        "properties": {
+          "parameters": {
+            "type": "object",
+            "description": "Mapa de parâmetros de MFA preenchidos pelo usuário.",
+            "properties": {
+              "token": {
+                "type": "string",
+                "description": "Token de MFA fornecido pelo usuário."
+              }
+            },
+            "required": ["token"]
+          }
+        },
+        "required": ["parameters"]
+      },
+      "ItemIsAlreadyUpdatingError": {
+        "type": "object",
+        "description": "Erro `409 ITEM_IS_ALREADY_UPDATING`: envelope padrão com o status de sincronização do item em `data`. Acompanha o header `Retry-After`.",
+        "properties": {
+          "code": {
+            "type": "integer",
+            "example": 409
+          },
+          "message": {
+            "type": "string",
+            "description": "Descrição legível. NÃO é estável — nunca faça parse."
+          },
+          "codeDescription": {
+            "type": "string",
+            "const": "ITEM_IS_ALREADY_UPDATING"
+          },
+          "data": {
+            "type": "object",
+            "properties": {
+              "itemId": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "status": {
+                "$ref": "#/components/schemas/StatusEnum"
+              },
+              "executionStatus": {
+                "$ref": "#/components/schemas/ExecutionStatusEnum"
+              },
+              "lastUpdatedAt": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "format": "date-time",
+                "description": "Última sincronização concluída com sucesso; `null` se o item nunca sincronizou."
+              },
+              "retryAfterSeconds": {
+                "type": "integer",
+                "description": "Mesmo valor do header `Retry-After`.",
+                "example": 1
+              }
+            },
+            "required": [
+              "itemId",
+              "status",
+              "executionStatus",
+              "lastUpdatedAt",
+              "retryAfterSeconds"
+            ]
+          }
+        },
+        "required": [
+          "code",
+          "message",
+          "codeDescription",
+          "data"
+        ]
+      },
+      "ItemConflictError": {
+        "description": "Demais erros `409` do item: envelope padrão com qualquer `codeDescription` exceto `ITEM_IS_ALREADY_UPDATING`, que usa `ItemIsAlreadyUpdatingError`.",
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/GlobalErrorResponse"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "codeDescription": {
+                "not": {
+                  "const": "ITEM_IS_ALREADY_UPDATING"
+                }
+              }
+            }
+          }
+        ]
+      },
+      "GlobalErrorResponse": {
+        "type": "object",
+        "description": "Envelope de erro padrão usado em todas as respostas não-2xx (§2).",
+        "properties": {
+          "code": {
+            "type": "integer",
+            "description": "Espelha o código HTTP."
+          },
+          "message": {
+            "type": "string",
+            "description": "Descrição legível. NÃO é estável — nunca faça parse."
+          },
+          "codeDescription": {
+            "type": "string",
+            "description": "Discriminador estável e legível por máquina (SCREAMING_SNAKE_CASE). Clientes ramificam neste valor, então deve corresponder exatamente."
+          },
+          "data": {
+            "type": "object",
+            "additionalProperties": true,
+            "description": "Contexto extra (livre)."
+          }
+        },
+        "required": ["code", "message"],
+        "example": {
+          "code": 404,
+          "message": "Item not found",
+          "codeDescription": "ITEM_NOT_FOUND"
+        }
+      },
+      "ValidationErrorResponse": {
+        "type": "object",
+        "description": "Corpo de erro de validação (HTTP 400) em `POST /items` e `PATCH /items/{id}`. O array `errors[]` é adicional aos campos do envelope padrão (§2.3).",
+        "properties": {
+          "code": {
+            "type": "integer",
+            "description": "Espelha o código HTTP (400)."
+          },
+          "message": {
+            "type": "string",
+            "description": "Descrição legível."
+          },
+          "errors": {
+            "type": "array",
+            "description": "Lista de falhas de validação de parâmetros.",
+            "items": {
+              "type": "object",
+              "properties": {
+                "code": {
+                  "type": "string",
+                  "description": "Classificação do erro."
+                },
+                "message": {
+                  "type": "string",
+                  "description": "O que falhou."
+                },
+                "parameter": {
+                  "type": "string",
+                  "description": "Nome do campo que causou o erro."
+                }
+              },
+              "required": ["code", "message", "parameter"]
+            }
+          }
+        },
+        "required": ["code", "message", "errors"],
+        "example": {
+          "code": 400,
+          "message": "Invalid parameters",
+          "errors": [
+            {
+              "code": "INVALID_PARAMETER",
+              "message": "cpf must match pattern ^\\d{11}$",
+              "parameter": "cpf"
+            }
+          ]
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,1266 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Malvo — Transações & Categorias",
+    "version": "1.0.0",
+    "description": "Endpoints de leitura de transações, categorias de transação, regras de categoria do cliente e busca de estabelecimentos (merchants) por CNPJ na API da Malvo. O contrato wire mantém paths, campos e formatos estáveis. Todos os endpoints exigem o header `X-API-KEY`. As transações cobrem até 12 meses de histórico e refletem o que a última execução do item coletou — estes endpoints não disparam sincronização. Prosa em pt-BR; nomes de campos e enums em inglês, como na wire."
+  },
+  "servers": [
+    {
+      "url": "https://api.malvo.io"
+    }
+  ],
+  "security": [
+    {
+      "apiKeyAuth": []
+    }
+  ],
+  "tags": [
+    {
+      "name": "Transactions",
+      "description": "Leitura e recategorização de transações. Ambos os endpoints de listagem filtram por `accountId` (obrigatório) — não há filtro por `itemId`; o cliente itera as contas do item. Use o endpoint atual `GET /v2/transactions` (cursor-based); o `GET /transactions` (page-based) está **deprecado**.\n\n**Convenção de sinal de `amount`:** em contas bancárias (`type=BANK`), `amount` é assinado e concorda com `type` (`DEBIT` ⇔ negativo, `CREDIT` ⇔ positivo). Em contas de cartão de crédito (`type=CREDIT`), o sinal é invertido: `amount` **positivo = despesa/compra** (`type=DEBIT`) e `amount` **negativo = pagamento/estorno ao cartão** (`type=CREDIT`). O campo `type` permanece normalizado para a perspectiva do titular."
+    },
+    {
+      "name": "Categories",
+      "description": "Catálogo de categorias de transação (até 3 níveis de hierarquia) e regras de categoria do cliente. `categoryId` é um id estável de 8 dígitos numéricos — faça joins/regras pelo id, pois os nomes podem mudar. As **Category Rules** são aplicadas ANTES do classificador, então sempre vencem para as linhas que casam. Recategorizar uma transação via `PATCH /transactions/{id}` cria automaticamente uma regra para o cliente."
+    },
+    {
+      "name": "Merchants",
+      "description": "Resolução de CNPJs em registros de estabelecimento (a mesma base que popula `transaction.merchant`). Útil para resolver CNPJs de contraparte (ex.: `paymentData.receiver.documentNumber.value`) sem enriquecimento."
+    }
+  ],
+  "paths": {
+    "/v2/transactions": {
+      "get": {
+        "tags": ["Transactions"],
+        "operationId": "listTransactionsV2",
+        "summary": "Listar transações (cursor-based, atual)",
+        "description": "**Endpoint atual.** Lista as transações de uma conta usando paginação por cursor. Não há parâmetro `pageSize`: o servidor controla o tamanho da página (500 por página). Continue requisitando com a query string retornada em `next` (ou extraia o `after`) até que `next` seja `null`. O cursor codifica `date|id` da última linha (base64) — trate-o como opaco.\n\nFiltra por `accountId` (obrigatório) — não há filtro por `itemId`. `dateFrom` **não pode** ser combinado com `createdAtFrom`. Cobre até 12 meses de histórico.",
+        "parameters": [
+          {
+            "name": "accountId",
+            "in": "query",
+            "required": true,
+            "description": "Identificador primário da conta.",
+            "schema": { "type": "string", "format": "uuid" }
+          },
+          {
+            "name": "ids",
+            "in": "query",
+            "required": false,
+            "description": "Lista de ids de transação separados por vírgula. Máximo de 500 ids por requisição.",
+            "schema": { "type": "string" },
+            "example": "a8534c85-53ce-4f21-94d7-50e9d2ee4957,05c693bf-c196-47ea-a28c-8251d6bb8a06"
+          },
+          {
+            "name": "dateFrom",
+            "in": "query",
+            "required": false,
+            "description": "Transações com `date >= dateFrom` (inclusive). Formato `yyyy-mm-dd`. **Não pode ser combinado com `createdAtFrom`.**",
+            "schema": { "type": "string", "format": "date" },
+            "example": "2020-10-01"
+          },
+          {
+            "name": "dateTo",
+            "in": "query",
+            "required": false,
+            "description": "Transações com `date <= dateTo` (inclusive). Formato `yyyy-mm-dd`.",
+            "schema": { "type": "string", "format": "date" },
+            "example": "2020-10-31"
+          },
+          {
+            "name": "createdAtFrom",
+            "in": "query",
+            "required": false,
+            "description": "Filtra por horário de ingestão (`createdAt`) — use para sincronização incremental. Formato `yyyy-mm-ddThh:mm:ss.000Z`.",
+            "schema": { "type": "string", "format": "date-time" },
+            "example": "2020-10-01T00:00:00.000Z"
+          },
+          {
+            "name": "after",
+            "in": "query",
+            "required": false,
+            "description": "Cursor opaco obtido do campo `next` da resposta anterior.",
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Página de transações com cursor para a próxima página.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/TransactionCursorPage" },
+                "example": {
+                  "results": [
+                    {
+                      "id": "a8534c85-53ce-4f21-94d7-50e9d2ee4957",
+                      "description": "* PROV * COMPRA TESOURO DIRETO CLIENTES",
+                      "descriptionRaw": "* PROV * COMPRA TESOURO DIRETO CLIENTES",
+                      "currencyCode": "BRL",
+                      "amount": -212.45,
+                      "date": "2020-10-15T00:00:00.000Z",
+                      "balance": 4439.4,
+                      "category": "Fixed Income Investment",
+                      "accountId": "562b795d-1653-429f-be86-74ead9502813",
+                      "providerCode": null,
+                      "status": "POSTED",
+                      "paymentData": null,
+                      "type": "DEBIT",
+                      "providerId": null
+                    }
+                  ],
+                  "next": "?accountId=562b795d-1653-429f-be86-74ead9502813&after=MjAyMC0xMC0xNVQwMDowMDowMC4wMDBafGE4NTM0Yzg1LTUzY2UtNGYyMS05NGQ3LTUwZTlkMmVlNDk1Nw=="
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Parâmetros inválidos: `accountId` ausente/inválido, cursor inválido ou excesso de ids.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/GlobalErrorResponse" },
+                "examples": {
+                  "missingAccountId": {
+                    "summary": "accountId ausente ou inválido",
+                    "value": {
+                      "message": "accountId should not be null or undefined, accountId must be a UUID",
+                      "code": 400
+                    }
+                  },
+                  "invalidCursor": {
+                    "summary": "Cursor inválido",
+                    "value": { "message": "Invalid cursor", "code": 400 }
+                  },
+                  "tooManyIds": {
+                    "summary": "Mais de 500 ids",
+                    "value": {
+                      "message": "The ids parameter cannot have more than 500 transaction ids",
+                      "code": 400,
+                      "codeDescription": "IDS_PARAMETER_EXCEEDS_MAX_LENGTH"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": { "$ref": "#/components/responses/InternalServerError" }
+        }
+      }
+    },
+    "/transactions": {
+      "get": {
+        "tags": ["Transactions"],
+        "operationId": "listTransactions",
+        "summary": "Listar transações (page-based, deprecado)",
+        "deprecated": true,
+        "description": "**Deprecado.** Lista as transações de uma conta usando paginação por página (envelope `{ total, totalPages, page, results }`). Mantido por compatibilidade. Prefira `GET /v2/transactions` (cursor-based).\n\nFiltra por `accountId` (obrigatório) — não há filtro por `itemId`. Se `ids` for informado, `from`/`to` são descartados. Cobre até 12 meses de histórico.",
+        "parameters": [
+          {
+            "name": "accountId",
+            "in": "query",
+            "required": true,
+            "description": "Identificador primário da conta.",
+            "schema": { "type": "string", "format": "uuid" }
+          },
+          {
+            "name": "ids",
+            "in": "query",
+            "required": false,
+            "description": "Lista de ids de transação. Se informado, `from`/`to` são descartados.",
+            "schema": { "type": "array", "items": { "type": "string", "format": "uuid" } }
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "required": false,
+            "description": "Filtra `date >= from`. Formato `yyyy-mm-dd`.",
+            "schema": { "type": "string", "format": "date" },
+            "example": "2020-10-01"
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": false,
+            "description": "Filtra `date <= to`. Formato `yyyy-mm-dd`.",
+            "schema": { "type": "string", "format": "date" },
+            "example": "2020-10-31"
+          },
+          {
+            "name": "pageSize",
+            "in": "query",
+            "required": false,
+            "description": "Tamanho da página (1–500). Padrão 500.",
+            "schema": { "type": "integer", "minimum": 1, "maximum": 500, "default": 500 }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "description": "Página (1-based). Padrão 1.",
+            "schema": { "type": "integer", "minimum": 1, "default": 1 }
+          },
+          {
+            "name": "createdAtFrom",
+            "in": "query",
+            "required": false,
+            "description": "Filtra por horário de ingestão. Formato `yyyy-mm-ddThh:mm:ss.000Z`.",
+            "schema": { "type": "string", "format": "date-time" },
+            "example": "2020-10-01T00:00:00.000Z"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Página de transações (envelope paginado).",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/TransactionPage" },
+                "example": {
+                  "total": 8,
+                  "totalPages": 1,
+                  "page": 1,
+                  "results": [
+                    {
+                      "id": "a8534c85-53ce-4f21-94d7-50e9d2ee4957",
+                      "description": "* PROV * COMPRA TESOURO DIRETO CLIENTES",
+                      "descriptionRaw": "* PROV * COMPRA TESOURO DIRETO CLIENTES",
+                      "currencyCode": "BRL",
+                      "amount": -212.45,
+                      "date": "2020-10-15T00:00:00.000Z",
+                      "balance": 4439.4,
+                      "category": "Fixed Income Investment",
+                      "accountId": "562b795d-1653-429f-be86-74ead9502813",
+                      "providerCode": null,
+                      "status": "POSTED",
+                      "paymentData": null,
+                      "type": "DEBIT",
+                      "providerId": null
+                    },
+                    {
+                      "id": "05c693bf-c196-47ea-a28c-8251d6bb8a06",
+                      "description": "PAGO NETFLIX SERV",
+                      "descriptionRaw": "PAGO NETFLIX SERV",
+                      "currencyCode": "USD",
+                      "amount": -58,
+                      "amountInAccountCurrency": -298.19,
+                      "date": "2020-10-15T00:00:00.000Z",
+                      "balance": 4651.85,
+                      "category": "Video streaming",
+                      "accountId": "562b795d-1653-429f-be86-74ead9502813",
+                      "providerCode": null,
+                      "status": "POSTED",
+                      "paymentData": null,
+                      "type": "DEBIT",
+                      "providerId": null,
+                      "merchant": {
+                        "name": "Netflix",
+                        "businessName": "NETFLIX ENTRETENIMENTO BRASIL LTDA.",
+                        "cnpj": "00000000000000",
+                        "category": "Video streaming",
+                        "cnae": "5911100"
+                      }
+                    },
+                    {
+                      "id": "ff9ed929-edc4-408c-a959-d51f79ab1814",
+                      "description": "MERCADOLIVRE*2PRODUTOS",
+                      "currencyCode": "BRL",
+                      "amount": 159.2,
+                      "date": "2020-10-14T00:00:00.000Z",
+                      "balance": 2468.84,
+                      "category": "Investment",
+                      "accountId": "562b795d-1653-429f-be86-74ead9502813",
+                      "providerCode": null,
+                      "status": "POSTED",
+                      "paymentData": null,
+                      "type": "CREDIT",
+                      "creditCardMetadata": {
+                        "totalAmount": 320,
+                        "totalInstallments": 2,
+                        "installmentNumber": 2,
+                        "purchaseDate": "2020-09-14T00:00:00.000Z",
+                        "payeeMCC": 1234,
+                        "cardNumber": "0597",
+                        "billId": "abced929-edc4-408c-a959-d51f79ab1123"
+                      },
+                      "providerId": null
+                    },
+                    {
+                      "id": "6ec156fe-e8ac-4d9a-a4b3-7770529ab01c",
+                      "description": "TED Example",
+                      "descriptionRaw": null,
+                      "currencyCode": "BRL",
+                      "amount": 1500,
+                      "date": "2020-10-14T00:00:00.000Z",
+                      "balance": 3500,
+                      "category": "Transfer",
+                      "accountId": "03cc0eff-4ec5-495c-adb3-1ef9611624fc",
+                      "providerCode": "123456",
+                      "type": "CREDIT",
+                      "status": "POSTED",
+                      "operationType": "TED",
+                      "paymentData": {
+                        "payer": {
+                          "name": "Tiago Rodrigues Santos",
+                          "branchNumber": "090",
+                          "accountNumber": "1234-5",
+                          "routingNumber": "001",
+                          "documentNumber": { "type": "CPF", "value": "882.937.076-24" }
+                        },
+                        "reason": "Taxa de serviço",
+                        "receiver": {
+                          "name": "Loja Exemplo Ltda",
+                          "branchNumber": "999",
+                          "accountNumber": "9876-1",
+                          "routingNumber": "002",
+                          "documentNumber": { "type": "CNPJ", "value": "08.050.608/0001-33" }
+                        },
+                        "paymentMethod": "TED",
+                        "referenceNumber": "123456789"
+                      },
+                      "providerId": null
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Parâmetros inválidos (ex.: `accountId` ausente ou não-UUID).",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/GlobalErrorResponse" },
+                "example": {
+                  "message": "accountId should not be null or undefined,accountId must be a UUID",
+                  "code": 400
+                }
+              }
+            }
+          },
+          "500": { "$ref": "#/components/responses/InternalServerError" }
+        }
+      }
+    },
+    "/transactions/{id}": {
+      "get": {
+        "tags": ["Transactions"],
+        "operationId": "retrieveTransaction",
+        "summary": "Recuperar transação",
+        "description": "Recupera uma transação pelo seu identificador primário.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "Identificador primário da transação.",
+            "schema": { "type": "string", "format": "uuid" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Objeto Transaction.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Transaction" },
+                "example": {
+                  "id": "a8534c85-53ce-4f21-94d7-50e9d2ee4957",
+                  "description": "* PROV * COMPRA TESOURO DIRETO CLIENTES",
+                  "descriptionRaw": "* PROV * COMPRA TESOURO DIRETO CLIENTES",
+                  "currencyCode": "BRL",
+                  "amount": -212.45,
+                  "date": "2020-10-15T00:00:00.000Z",
+                  "balance": 4439.4,
+                  "category": "Fixed Income Investment",
+                  "accountId": "562b795d-1653-429f-be86-74ead9502813",
+                  "providerCode": null,
+                  "status": "POSTED",
+                  "paymentData": null,
+                  "type": "DEBIT",
+                  "providerId": null
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Transação não encontrada.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/GlobalErrorResponse" },
+                "example": {
+                  "code": 404,
+                  "codeDescription": "TRANSACTION_NOT_FOUND",
+                  "message": "Transaction not found"
+                }
+              }
+            }
+          },
+          "500": { "$ref": "#/components/responses/InternalServerError" }
+        }
+      },
+      "patch": {
+        "tags": ["Transactions"],
+        "operationId": "updateTransactionCategory",
+        "summary": "Atualizar categoria da transação",
+        "description": "Recategoriza uma transação. A correção é persistida (leituras subsequentes retornam a categoria corrigida), alimenta o classificador e cria automaticamente uma **Category Rule** para o cliente (veja `POST /categories/rules`).",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "Identificador primário da transação.",
+            "schema": { "type": "string", "format": "uuid" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/UpdateTransaction" },
+              "example": { "categoryId": "07010000" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "A transação atualizada (objeto completo, com `category` + `categoryId` novos).",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Transaction" },
+                "example": {
+                  "id": "a8534c85-53ce-4f21-94d7-50e9d2ee4957",
+                  "description": "* PROV * COMPRA TESOURO DIRETO CLIENTES",
+                  "descriptionRaw": "* PROV * COMPRA TESOURO DIRETO CLIENTES",
+                  "currencyCode": "BRL",
+                  "amount": -212.45,
+                  "date": "2020-10-15T00:00:00.000Z",
+                  "balance": 4439.4,
+                  "category": "Telecommunications",
+                  "categoryId": "07010000",
+                  "accountId": "562b795d-1653-429f-be86-74ead9502813",
+                  "providerCode": null,
+                  "status": "POSTED",
+                  "paymentData": null,
+                  "type": "DEBIT",
+                  "providerId": null
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Id de transação inválido ou corpo malformado.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/GlobalErrorResponse" },
+                "example": {
+                  "message": "Transaction Id should not be null or undefined, transactionId must be a UUID",
+                  "code": 400
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Transação não encontrada.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/GlobalErrorResponse" },
+                "example": { "code": 404, "message": "Transaction not found" }
+              }
+            }
+          },
+          "500": { "$ref": "#/components/responses/InternalServerError" }
+        }
+      }
+    },
+    "/categories": {
+      "get": {
+        "tags": ["Categories"],
+        "operationId": "listCategories",
+        "summary": "Listar categorias",
+        "description": "Lista o catálogo de categorias de transação. Informe `parentId` para retornar apenas os filhos de uma categoria. Envelope paginado de página única (`totalPages` é sempre 1).",
+        "parameters": [
+          {
+            "name": "parentId",
+            "in": "query",
+            "required": false,
+            "description": "Retorna apenas os filhos dessa categoria.",
+            "schema": { "type": "string" },
+            "example": "01000000"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Página de categorias.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/CategoryPage" },
+                "example": {
+                  "page": 1,
+                  "total": 2,
+                  "totalPages": 1,
+                  "results": [
+                    {
+                      "id": "01000000",
+                      "description": "Income",
+                      "descriptionTranslated": "Renda"
+                    },
+                    {
+                      "id": "01010000",
+                      "description": "Salary/pro-labore",
+                      "descriptionTranslated": "Salário",
+                      "parentId": "01000000",
+                      "parentDescription": "Income"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "500": { "$ref": "#/components/responses/InternalServerError" }
+        }
+      }
+    },
+    "/categories/{id}": {
+      "get": {
+        "tags": ["Categories"],
+        "operationId": "retrieveCategory",
+        "summary": "Recuperar categoria",
+        "description": "Recupera uma categoria pelo seu id (8 dígitos numéricos).",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "Id da categoria (8 dígitos numéricos).",
+            "schema": { "type": "string" },
+            "example": "01010000"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Objeto Category.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Category" },
+                "example": {
+                  "id": "01010000",
+                  "description": "Salary/pro-labore",
+                  "descriptionTranslated": "Salário",
+                  "parentId": "01000000",
+                  "parentDescription": "Income"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Categoria não encontrada.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/GlobalErrorResponse" },
+                "example": {
+                  "code": 404,
+                  "codeDescription": "CATEGORY_NOT_FOUND",
+                  "message": "category not found"
+                }
+              }
+            }
+          },
+          "500": { "$ref": "#/components/responses/InternalServerError" }
+        }
+      }
+    },
+    "/categories/rules": {
+      "get": {
+        "tags": ["Categories"],
+        "operationId": "listCategoryRules",
+        "summary": "Listar regras de categoria",
+        "description": "Lista as regras de categoria do cliente (page shape). As regras são **client-wide** (escopadas ao `clientId` da API), não por item nem por usuário.",
+        "responses": {
+          "200": {
+            "description": "Página de regras de categoria.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ClientCategoryRulePage" },
+                "example": {
+                  "page": 1,
+                  "total": 1,
+                  "totalPages": 1,
+                  "results": [
+                    {
+                      "description": "uber payment",
+                      "category": "Salary/pro-labore",
+                      "categoryId": "05000000",
+                      "clientId": "03cc0eff-4ec5-495c-adb3-1ef9611624fc",
+                      "transactionType": "DEBIT",
+                      "accountType": "CHECKING_ACCOUNT"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "500": { "$ref": "#/components/responses/InternalServerError" }
+        }
+      },
+      "post": {
+        "tags": ["Categories"],
+        "operationId": "createCategoryRule",
+        "summary": "Criar regra de categoria",
+        "description": "Cria uma regra de categoria do cliente. O texto em `description` é casado contra as descrições das transações (case-insensitive). As regras são aplicadas ANTES do classificador. `category` na resposta é a descrição resolvida de `categoryId`.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/CreateClientCategoryRule" },
+              "example": {
+                "description": "uber payment",
+                "categoryId": "05000000",
+                "transactionType": "DEBIT",
+                "accountType": "CHECKING_ACCOUNT"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "A regra criada.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ClientCategoryRule" },
+                "example": {
+                  "description": "uber payment",
+                  "category": "Salary/pro-labore",
+                  "categoryId": "05000000",
+                  "clientId": "03cc0eff-4ec5-495c-adb3-1ef9611624fc",
+                  "transactionType": "DEBIT",
+                  "accountType": "CHECKING_ACCOUNT"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Corpo inválido (ex.: `description` ausente/não-string).",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/GlobalErrorResponse" },
+                "example": { "code": 400, "message": "description must be a string" }
+              }
+            }
+          },
+          "404": {
+            "description": "`categoryId` não corresponde a nenhuma categoria.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/GlobalErrorResponse" },
+                "example": {
+                  "code": 404,
+                  "codeDescription": "CATEGORY_NOT_FOUND",
+                  "message": "category not found"
+                }
+              }
+            }
+          },
+          "500": { "$ref": "#/components/responses/InternalServerError" }
+        }
+      }
+    },
+    "/merchants": {
+      "get": {
+        "tags": ["Merchants"],
+        "operationId": "listMerchantsByCnpj",
+        "summary": "Buscar estabelecimentos por CNPJ",
+        "description": "Resolve uma lista de CNPJs em registros de estabelecimento. Cada CNPJ submetido cai em exatamente um dos três buckets: `foundMerchants`, `notFoundMerchants` (CNPJs válidos ausentes da base) ou `invalidCnpjs` (entradas malformadas).",
+        "parameters": [
+          {
+            "name": "cnpjs",
+            "in": "query",
+            "required": true,
+            "description": "Lista de CNPJs separados por vírgula, **somente dígitos** (ex.: `00000000000192,60701190000105`).",
+            "schema": { "type": "string" },
+            "example": "00000000000192,60701190000105"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Resultado da busca, particionado em três buckets.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/MerchantLookupResponse" },
+                "example": {
+                  "foundMerchants": [
+                    {
+                      "businessName": "BANCO EXEMPLO S.A.",
+                      "cnpj": "00000000000192",
+                      "name": "BANCO DO BRASIL",
+                      "cnae": "6422100",
+                      "category": "Banking"
+                    }
+                  ],
+                  "notFoundMerchants": [],
+                  "invalidCnpjs": []
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Parâmetro `cnpjs` ausente ou malformado.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/GlobalErrorResponse" },
+                "example": { "code": 400, "message": "cnpjs should not be null or undefined" }
+              }
+            }
+          },
+          "500": { "$ref": "#/components/responses/InternalServerError" }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "apiKeyAuth": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "X-API-KEY",
+        "description": "Chave de API da aplicação. Obrigatória em todos os endpoints. Renove via `POST /auth`."
+      }
+    },
+    "schemas": {
+      "Transaction": {
+        "type": "object",
+        "description": "Transação de uma conta bancária ou de cartão de crédito.\n\n**Convenção de sinal de `amount`:** em contas bancárias (`type=BANK`), `amount` é assinado — débitos (saída) são **negativos**, créditos (entrada) **positivos**, e o sinal sempre concorda com `type`. Em contas de cartão de crédito (`type=CREDIT`), o sinal é invertido: `amount` **positivo = despesa/compra** (`type=DEBIT`) e `amount` **negativo = pagamento/estorno ao cartão** (`type=CREDIT`). O campo `type` permanece normalizado para a perspectiva do titular.",
+        "required": ["id", "description", "currencyCode", "amount", "date", "accountId", "createdAt", "updatedAt"],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Identificador primário.",
+            "example": "a8534c85-53ce-4f21-94d7-50e9d2ee4957"
+          },
+          "accountId": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Conta à qual a transação pertence.",
+            "example": "562b795d-1653-429f-be86-74ead9502813"
+          },
+          "description": {
+            "type": "string",
+            "description": "Descrição limpa/normalizada.",
+            "example": "* PROV * COMPRA TESOURO DIRETO CLIENTES"
+          },
+          "descriptionRaw": {
+            "type": ["string", "null"],
+            "description": "Descrição original da instituição antes da limpeza; `null` quando não fornecida."
+          },
+          "currencyCode": {
+            "type": "string",
+            "description": "Código ISO 4217.",
+            "example": "BRL"
+          },
+          "amount": {
+            "type": "number",
+            "description": "Valor da transação. Veja a convenção de sinal na descrição do schema.",
+            "example": -212.45
+          },
+          "amountInAccountCurrency": {
+            "type": ["number", "null"],
+            "description": "Valor convertido para a moeda da conta. **Presente apenas quando a moeda da transação difere da moeda da conta** (cartões multi-moeda)."
+          },
+          "date": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Quando a transação foi realizada (data de postagem).",
+            "example": "2020-10-15T00:00:00.000Z"
+          },
+          "type": {
+            "type": "string",
+            "enum": ["DEBIT", "CREDIT"],
+            "description": "Direção sob a perspectiva do titular. `CREDIT` = entrada (depósitos, transferências recebidas, estornos); `DEBIT` = saída (pagamentos, saques, transferências enviadas, compras no cartão). Para cartões, o agregador normaliza: compras são sempre `DEBIT`, pagamentos de fatura são `CREDIT`."
+          },
+          "balance": {
+            "type": ["number", "null"],
+            "description": "Saldo corrente da conta logo após esta transação; `null` quando a instituição não o retorna.",
+            "example": 4439.4
+          },
+          "providerCode": {
+            "type": ["string", "null"],
+            "description": "Referência/código do lado da instituição (NSU, número de extrato); formato varia por instituição."
+          },
+          "status": {
+            "type": "string",
+            "enum": ["POSTED", "PENDING", "UNKNOWN"],
+            "description": "`POSTED` = confirmada/liquidada. `PENDING` = ainda não liquidada. `UNKNOWN` preserva um registro válido cujo status oficial do provedor é não enquadrado; consulte `providerStatus`.",
+            "example": "POSTED"
+          },
+          "providerStatus": {
+            "type": ["string", "null"],
+            "description": "Status bruto do provedor quando disponível. No fluxo internacional pode ser BOOK, PDNG, HOLD, SCHD ou OTHR; CNCL/RJCT removem a transação e geram transactions/deleted."
+          },
+          "category": {
+            "type": ["string", "null"],
+            "description": "Nome da categoria (ex.: `Transfers`); `null` se não houver correspondência.",
+            "example": "Fixed Income Investment"
+          },
+          "categoryId": {
+            "type": ["string", "null"],
+            "description": "Id estável de 8 dígitos numéricos (ex.: `05000000`). Use para joins/regras; nomes podem mudar."
+          },
+          "paymentData": {
+            "description": "Detalhes de transferência/pagamento. `null` para transações que não são transferências.",
+            "oneOf": [
+              { "$ref": "#/components/schemas/PaymentData" },
+              { "type": "null" }
+            ]
+          },
+          "creditCardMetadata": {
+            "description": "Informações de parcelamento/MCC. Apenas para transações de cartão de crédito.",
+            "oneOf": [
+              { "$ref": "#/components/schemas/CreditCardMetadata" },
+              { "type": "null" }
+            ]
+          },
+          "merchant": {
+            "description": "Estabelecimento associado à transação.",
+            "oneOf": [
+              { "$ref": "#/components/schemas/Merchant" },
+              { "type": "null" }
+            ]
+          },
+          "operationType": {
+            "type": ["string", "null"],
+            "description": "Tipo de operação classificado pela instituição (Open Finance), ex.: `TED`, `PIX`."
+          },
+          "providerId": {
+            "type": ["string", "null"],
+            "description": "Id da transação no provider. **Retornado apenas para conectores Open Finance.**"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Timestamp de ingestão (par com o filtro `createdAtFrom`).",
+            "example": "2020-10-15T00:00:00.000Z"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Timestamp da última modificação.",
+            "example": "2020-10-15T00:00:00.000Z"
+          }
+        }
+      },
+      "PaymentData": {
+        "type": "object",
+        "description": "Detalhes de transferência/pagamento. Dados de contraparte Pix chegam por `payer`/`receiver` com `paymentMethod: \"PIX\"` — não há campo `pixKey` dedicado na wire.",
+        "properties": {
+          "payer": { "$ref": "#/components/schemas/PaymentDataParticipant" },
+          "receiver": { "$ref": "#/components/schemas/PaymentDataParticipant" },
+          "reason": {
+            "type": "string",
+            "description": "Motivo informado pelo usuário ao fazer a transferência.",
+            "example": "Taxa de serviço"
+          },
+          "referenceNumber": {
+            "type": "string",
+            "description": "Número de referência da transferência/pagamento.",
+            "example": "123456789"
+          },
+          "receiverReferenceId": {
+            "type": "string",
+            "description": "String submetida pelo recebedor associada ao pagamento ao gerar a solicitação. (raramente populado / rarely populated)"
+          },
+          "paymentMethod": {
+            "type": "string",
+            "description": "`PIX` (instantâneo), `TED` (interbancário mesmo dia), `DOC` (D+1, deprecado pelo BCB), `TEV` (intrabancário), `BOLETO` (boleto bancário).",
+            "example": "TED"
+          },
+          "boletoMetadata": {
+            "description": "Metadados de boleto. (raramente populado / rarely populated)",
+            "oneOf": [
+              { "$ref": "#/components/schemas/BoletoMetadata" },
+              { "type": "null" }
+            ]
+          }
+        }
+      },
+      "PaymentDataParticipant": {
+        "type": "object",
+        "description": "Participante (pagador ou recebedor) de uma transferência/pagamento.",
+        "properties": {
+          "documentNumber": {
+            "type": "object",
+            "description": "Documento formatado do participante.",
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": ["CPF", "CNPJ"],
+                "description": "Tipo de documento."
+              },
+              "value": {
+                "type": "string",
+                "description": "Valor formatado do documento.",
+                "example": "416.799.495-01"
+              }
+            }
+          },
+          "name": {
+            "type": "string",
+            "description": "Nome completo.",
+            "example": "Tiago Rodrigues Santos"
+          },
+          "accountNumber": {
+            "type": "string",
+            "description": "Número da conta na agência.",
+            "example": "1234-5"
+          },
+          "branchNumber": {
+            "type": "string",
+            "description": "Número da agência.",
+            "example": "090"
+          },
+          "routingNumber": {
+            "type": "string",
+            "description": "Número COMPE do banco.",
+            "example": "001"
+          },
+          "routingNumberISPB": {
+            "type": "string",
+            "description": "Número ISPB do banco."
+          }
+        }
+      },
+      "BoletoMetadata": {
+        "type": "object",
+        "description": "Metadados de boleto; presente apenas para pagamentos de boleto.",
+        "properties": {
+          "digitableLine": { "type": "string", "description": "Linha digitável do boleto." },
+          "barcode": { "type": "string", "description": "Número do código de barras." },
+          "baseAmount": { "type": "number", "description": "Valor original sem multas/juros/descontos." },
+          "interestAmount": { "type": "number", "description": "Valor de juros." },
+          "penaltyAmount": { "type": "number", "description": "Valor de multa." },
+          "discountAmount": { "type": "number", "description": "Valor de desconto." }
+        }
+      },
+      "CreditCardMetadata": {
+        "type": "object",
+        "description": "Informações de parcelamento e MCC de uma transação de cartão de crédito.",
+        "properties": {
+          "installmentNumber": {
+            "type": "number",
+            "description": "Parcela atual da compra (1-based).",
+            "example": 2
+          },
+          "totalInstallments": {
+            "type": "number",
+            "description": "Total de parcelas no plano.",
+            "example": 2
+          },
+          "totalAmount": {
+            "type": "number",
+            "description": "Valor total da compra.",
+            "example": 320
+          },
+          "purchaseDate": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Data original da compra.",
+            "example": "2020-09-14T00:00:00.000Z"
+          },
+          "payeeMCC": {
+            "description": "Merchant Category Code (numérico, ex.: `1234`).",
+            "type": "number",
+            "example": 1234
+          },
+          "cardNumber": {
+            "type": "string",
+            "description": "Número do cartão da transação; pode diferir da conta quando feita por cartão adicional/virtual.",
+            "example": "0597"
+          },
+          "billId": {
+            "type": ["string", "null"],
+            "format": "uuid",
+            "description": "Fatura (bill) à qual esta transação pertence; `null`/ausente enquanto o extrato ainda está aberto.",
+            "example": "abced929-edc4-408c-a959-d51f79ab1123"
+          }
+        }
+      },
+      "Merchant": {
+        "type": "object",
+        "description": "Registro de estabelecimento.",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Nome de exibição.",
+            "example": "Netflix"
+          },
+          "businessName": {
+            "type": "string",
+            "description": "Razão social.",
+            "example": "NETFLIX ENTRETENIMENTO BRASIL LTDA."
+          },
+          "cnpj": {
+            "type": "string",
+            "description": "CNPJ somente dígitos.",
+            "example": "00000000000000"
+          },
+          "cnae": {
+            "type": "string",
+            "description": "Código de classificação de atividade econômica.",
+            "example": "5911100"
+          },
+          "category": {
+            "type": "string",
+            "description": "Rótulo de categoria do estabelecimento.",
+            "example": "Video streaming"
+          }
+        }
+      },
+      "UpdateTransaction": {
+        "type": "object",
+        "description": "Corpo para recategorizar uma transação.",
+        "required": ["categoryId"],
+        "properties": {
+          "categoryId": {
+            "type": "string",
+            "description": "Id da categoria a atribuir (8 dígitos numéricos).",
+            "example": "07010000"
+          }
+        }
+      },
+      "Category": {
+        "type": "object",
+        "description": "Categoria de transação. Hierarquia de até 3 níveis: nível-1 = `XX000000`, nível-2 = `XXYY0000`, nível-3 = `XXYYZZ00`. Em categorias de nível-1 as chaves `parentId`/`parentDescription` são **omitidas** (não emitidas como `null`).",
+        "required": ["id", "description"],
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Id de 8 dígitos numéricos.",
+            "example": "01010000"
+          },
+          "description": {
+            "type": "string",
+            "description": "Nome em inglês.",
+            "example": "Salary/pro-labore"
+          },
+          "descriptionTranslated": {
+            "type": "string",
+            "description": "Nome em português.",
+            "example": "Salário"
+          },
+          "parentId": {
+            "type": "string",
+            "description": "Id da categoria pai. Chave omitida em categorias de nível-1.",
+            "example": "01000000"
+          },
+          "parentDescription": {
+            "type": "string",
+            "description": "`description` do pai. Chave omitida em categorias de nível-1.",
+            "example": "Income"
+          }
+        }
+      },
+      "CreateClientCategoryRule": {
+        "type": "object",
+        "description": "Corpo para criar uma regra de categoria do cliente.",
+        "required": ["description", "categoryId"],
+        "properties": {
+          "description": {
+            "type": "string",
+            "description": "Texto casado contra as descrições das transações (case-insensitive).",
+            "example": "uber payment"
+          },
+          "categoryId": {
+            "type": "string",
+            "description": "Categoria a atribuir.",
+            "example": "05000000"
+          },
+          "transactionType": {
+            "type": "string",
+            "enum": ["DEBIT", "CREDIT"],
+            "description": "Restringe a regra a transações `DEBIT` ou `CREDIT`."
+          },
+          "accountType": {
+            "type": "string",
+            "enum": ["CHECKING_ACCOUNT", "CREDIT_CARD"],
+            "description": "Restringe a regra a contas `CHECKING_ACCOUNT` ou `CREDIT_CARD`."
+          },
+          "matchType": {
+            "type": "string",
+            "enum": ["exact", "contains", "startsWith", "endsWith"],
+            "description": "Modo de correspondência. Padrão `exact`."
+          }
+        }
+      },
+      "ClientCategoryRule": {
+        "type": "object",
+        "description": "Regra de categoria do cliente. As regras são client-wide (escopadas ao `clientId` da API). `category` é a descrição resolvida de `categoryId`.",
+        "required": ["description", "category"],
+        "properties": {
+          "description": {
+            "type": "string",
+            "description": "Texto casado contra as descrições das transações.",
+            "example": "uber payment"
+          },
+          "category": {
+            "type": "string",
+            "description": "Descrição resolvida de `categoryId`.",
+            "example": "Salary/pro-labore"
+          },
+          "categoryId": {
+            "type": "string",
+            "description": "Id da categoria atribuída.",
+            "example": "05000000"
+          },
+          "clientId": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Id do cliente (API) ao qual a regra pertence.",
+            "example": "03cc0eff-4ec5-495c-adb3-1ef9611624fc"
+          },
+          "transactionType": {
+            "type": "string",
+            "enum": ["DEBIT", "CREDIT"],
+            "description": "Restrição por tipo de transação, se definida."
+          },
+          "accountType": {
+            "type": "string",
+            "enum": ["CHECKING_ACCOUNT", "CREDIT_CARD"],
+            "description": "Restrição por tipo de conta, se definida."
+          },
+          "matchType": {
+            "type": "string",
+            "enum": ["exact", "contains", "startsWith", "endsWith"],
+            "description": "Modo de correspondência."
+          }
+        }
+      },
+      "MerchantLookupResponse": {
+        "type": "object",
+        "description": "Resposta da busca de estabelecimentos por CNPJ. Cada CNPJ submetido cai em exatamente um dos três buckets.",
+        "required": ["foundMerchants", "notFoundMerchants", "invalidCnpjs"],
+        "properties": {
+          "foundMerchants": {
+            "type": "array",
+            "description": "Estabelecimentos encontrados.",
+            "items": { "$ref": "#/components/schemas/Merchant" }
+          },
+          "notFoundMerchants": {
+            "type": "array",
+            "description": "CNPJs válidos não presentes na base de estabelecimentos.",
+            "items": { "type": "string" }
+          },
+          "invalidCnpjs": {
+            "type": "array",
+            "description": "Entradas malformadas.",
+            "items": { "type": "string" }
+          }
+        }
+      },
+      "TransactionCursorPage": {
+        "type": "object",
+        "description": "Envelope de paginação por cursor (somente `GET /v2/transactions`). Continue requisitando com a query string de `next` até que seja `null`.",
+        "required": ["results", "next"],
+        "properties": {
+          "results": {
+            "type": "array",
+            "description": "Lista de transações desta página.",
+            "items": { "$ref": "#/components/schemas/Transaction" }
+          },
+          "next": {
+            "type": ["string", "null"],
+            "description": "Query string pronta para anexar (começa com `?`) contendo `accountId` e o cursor opaco `after`. `null` quando não há mais resultados.",
+            "example": "?accountId=562b795d-1653-429f-be86-74ead9502813&after=MjAyMC0xMC0xNVQwMDowMDowMC4wMDBafGE4NTM0Yzg1LTUzY2UtNGYyMS05NGQ3LTUwZTlkMmVlNDk1Nw=="
+          }
+        }
+      },
+      "TransactionPage": {
+        "type": "object",
+        "description": "Envelope de paginação por página para transações.",
+        "required": ["page", "total", "totalPages", "results"],
+        "properties": {
+          "page": { "type": "integer", "description": "Página atual (1-based).", "example": 1 },
+          "total": { "type": "integer", "description": "Total de resultados em todas as páginas.", "example": 8 },
+          "totalPages": { "type": "integer", "description": "Número de páginas.", "example": 1 },
+          "results": {
+            "type": "array",
+            "description": "Lista de transações desta página.",
+            "items": { "$ref": "#/components/schemas/Transaction" }
+          }
+        }
+      },
+      "CategoryPage": {
+        "type": "object",
+        "description": "Envelope de paginação por página para categorias (página única; `totalPages` sempre 1).",
+        "required": ["page", "total", "totalPages", "results"],
+        "properties": {
+          "page": { "type": "integer", "description": "Página atual (1-based).", "example": 1 },
+          "total": { "type": "integer", "description": "Total de resultados.", "example": 2 },
+          "totalPages": { "type": "integer", "description": "Número de páginas.", "example": 1 },
+          "results": {
+            "type": "array",
+            "description": "Lista de categorias.",
+            "items": { "$ref": "#/components/schemas/Category" }
+          }
+        }
+      },
+      "ClientCategoryRulePage": {
+        "type": "object",
+        "description": "Envelope de paginação por página para regras de categoria do cliente.",
+        "required": ["page", "total", "totalPages", "results"],
+        "properties": {
+          "page": { "type": "integer", "description": "Página atual (1-based).", "example": 1 },
+          "total": { "type": "integer", "description": "Total de resultados.", "example": 1 },
+          "totalPages": { "type": "integer", "description": "Número de páginas.", "example": 1 },
+          "results": {
+            "type": "array",
+            "description": "Lista de regras de categoria.",
+            "items": { "$ref": "#/components/schemas/ClientCategoryRule" }
+          }
+        }
+      },
+      "GlobalErrorResponse": {
+        "type": "object",
+        "description": "Formato padrão de erro da API da Malvo. `code` espelha o status HTTP.",
+        "required": ["code", "message"],
+        "properties": {
+          "code": {
+            "type": "integer",
+            "description": "Código de status HTTP do erro.",
+            "example": 400
+          },
+          "message": {
+            "type": "string",
+            "description": "Mensagem legível descrevendo o erro.",
+            "example": "Invalid cursor"
+          },
+          "codeDescription": {
+            "type": "string",
+            "description": "Código distintivo legível por máquina, ex.: `TRANSACTION_NOT_FOUND`.",
+            "example": "IDS_PARAMETER_EXCEEDS_MAX_LENGTH"
+          },
+          "data": {
+            "type": "object",
+            "description": "Dados adicionais opcionais sobre o erro.",
+            "additionalProperties": true
+          }
+        },
+        "example": {
+          "code": 500,
+          "codeDescription": "INTERNAL_SERVER_ERROR",
+          "message": "Internal Server Error"
+        }
+      }
+    },
+    "responses": {
+      "InternalServerError": {
+        "description": "Erro interno do servidor.",
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "#/components/schemas/GlobalErrorResponse" },
+            "example": {
+              "code": 500,
+              "codeDescription": "INTERNAL_SERVER_ERROR",
+              "message": "Internal Server Error"
+            }
+          }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,657 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Malvo — Webhooks Management API",
+    "version": "1.0.0",
+    "description": "Endpoints de gerenciamento (CRUD) de webhooks da Malvo. Registre, liste, atualize e remova webhooks que recebem notificações de eventos de itens, transações e conectores."
+  },
+  "servers": [
+    {
+      "url": "https://api.malvo.io"
+    }
+  ],
+  "security": [
+    {
+      "apiKeyAuth": []
+    }
+  ],
+  "tags": [
+    {
+      "name": "Webhooks",
+      "description": "Gerenciamento (CRUD) dos webhooks da sua aplicação. Um webhook é um endpoint HTTPS que recebe notificações `POST` quando ocorrem eventos nos recursos que sua aplicação possui (itens, transações, conectores). Estes endpoints gerenciam o REGISTRO dos webhooks — não os payloads entregues.\n\n**Limites:** máximo de **5 webhooks por tipo de evento** por aplicação. Ao exceder, `POST /webhooks` retorna `400` com a mensagem `Webhook limit reached`. Se você precisa de mais fan-out, assine um único endpoint em `event: \"all\"` e roteie internamente.\n\n**URL:** somente `https://` é aceito. URLs `http://`, `localhost`, `127.0.0.1` e hosts privados (RFC-1918) são rejeitadas no momento do registro com `400` (em desenvolvimento, use túneis como ngrok).\n\n**Headers customizados:** o campo `headers` é a única forma de configurar autenticação por header nas entregas. Ele é **write-only** e **API-only** — pode ser definido via `POST`/`PATCH`, mas **nunca** é retornado em respostas `GET`/list e nunca é visível ou editável no Dashboard (material sensível). Use `PATCH /webhooks/{id}` para rotacionar segredos.\n\n**Autenticação:** todos os endpoints exigem o header `X-API-KEY: <apiKey>` (TTL de 2h, renovado via `POST /auth`).\n\n<Note>Webhooks são a fonte da verdade; o callback `onSuccess` do widget é best-effort. Trate `eventId` como chave de idempotência.</Note>"
+    }
+  ],
+  "paths": {
+    "/webhooks": {
+      "post": {
+        "tags": ["Webhooks"],
+        "operationId": "createWebhook",
+        "summary": "Criar webhook",
+        "description": "Registra um novo webhook na sua aplicação. A `url` deve usar `https://` e não pode ser `localhost`/host privado. O `event` deve ser um valor válido do enum (`all` cobre todos os eventos disparados). O campo `headers` é write-only: aceito aqui, mas nunca retornado.\n\n**Dica:** prefira `event: \"all\"` com um único endpoint e roteie internamente, evitando o limite de 5 webhooks por tipo de evento.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WebhookCreate"
+              },
+              "example": {
+                "url": "https://api.your-app.com/webhooks/malvo",
+                "event": "all",
+                "headers": {
+                  "Authorization": "Bearer <your-shared-secret>",
+                  "X-CLIENT-ID": "<secret>"
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Webhook criado. O corpo é o objeto Webhook (sem `headers`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Webhook"
+                },
+                "example": {
+                  "id": "39e1d11f-3c12-44a8-a788-75c5747e1a8e",
+                  "event": "all",
+                  "url": "https://api.your-app.com/webhooks/malvo",
+                  "createdAt": "2026-06-10T12:00:00.000Z",
+                  "updatedAt": "2026-06-10T12:00:00.000Z",
+                  "disabled": null
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "URL inválida (`http://`/`localhost`/host privado), valor de `event` desconhecido, corpo malformado, ou limite atingido (`Webhook limit reached` — já existem 5 webhooks para esse tipo de evento).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GlobalErrorResponse"
+                },
+                "examples": {
+                  "invalidUrl": {
+                    "summary": "URL não-HTTPS",
+                    "value": {
+                      "code": 400,
+                      "message": "Invalid webhook URL: only https:// URLs are allowed",
+                      "codeDescription": "VALIDATION_ERROR"
+                    }
+                  },
+                  "limitReached": {
+                    "summary": "Limite de 5 webhooks por evento",
+                    "value": {
+                      "code": 400,
+                      "message": "Webhook limit reached",
+                      "codeDescription": "VALIDATION_ERROR"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          }
+        }
+      },
+      "get": {
+        "tags": ["Webhooks"],
+        "operationId": "listWebhooks",
+        "summary": "Listar webhooks",
+        "description": "Lista todos os webhooks da sua aplicação no envelope paginado padrão da Malvo. O campo `headers` é omitido de todos os resultados (write-only).",
+        "responses": {
+          "200": {
+            "description": "Envelope paginado com os webhooks da aplicação.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WebhooksList"
+                },
+                "example": {
+                  "total": 2,
+                  "totalPages": 1,
+                  "page": 1,
+                  "results": [
+                    {
+                      "id": "39e1d11f-3c12-44a8-a788-75c5747e1a8e",
+                      "event": "all",
+                      "url": "https://api.your-app.com/webhooks/malvo",
+                      "createdAt": "2026-06-10T12:00:00.000Z",
+                      "updatedAt": "2026-06-10T12:00:00.000Z",
+                      "disabled": null
+                    },
+                    {
+                      "id": "7d2a02c1-9c1b-43c5-b144-1bb39b0e8f3c",
+                      "event": "item/error",
+                      "url": "https://api.your-app.com/webhooks/malvo-errors",
+                      "createdAt": "2026-06-01T09:30:00.000Z",
+                      "updatedAt": "2026-06-01T09:30:00.000Z",
+                      "disabled": null
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          }
+        }
+      }
+    },
+    "/webhooks/{id}": {
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "description": "Identificador (UUID) do webhook.",
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "example": "39e1d11f-3c12-44a8-a788-75c5747e1a8e"
+        }
+      ],
+      "get": {
+        "tags": ["Webhooks"],
+        "operationId": "retrieveWebhook",
+        "summary": "Recuperar webhook",
+        "description": "Recupera um único webhook pelo `id`. O campo `headers` nunca é retornado. Retorna `404` se o id não existir ou pertencer a outra aplicação.",
+        "responses": {
+          "200": {
+            "description": "Objeto Webhook (sem `headers`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Webhook"
+                },
+                "example": {
+                  "id": "39e1d11f-3c12-44a8-a788-75c5747e1a8e",
+                  "event": "all",
+                  "url": "https://api.your-app.com/webhooks/malvo",
+                  "createdAt": "2026-06-10T12:00:00.000Z",
+                  "updatedAt": "2026-06-10T12:00:00.000Z",
+                  "disabled": null
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          }
+        }
+      },
+      "patch": {
+        "tags": ["Webhooks"],
+        "operationId": "updateWebhook",
+        "summary": "Atualizar webhook",
+        "description": "Atualiza parcialmente um webhook. Apenas os campos enviados são alterados. Campos atualizáveis: `url`, `event`, `headers`, `disabled`.\n\n**Rotação de segredos:** como `headers` não pode ser editado no Dashboard por design, este endpoint é o mecanismo para rotacionar os segredos de autenticação das entregas. Para reativar um webhook desabilitado, envie `\"disabled\": null`.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WebhookUpdate"
+              },
+              "example": {
+                "headers": {
+                  "Authorization": "Bearer <rotated-secret>"
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Objeto Webhook atualizado (sem `headers`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Webhook"
+                },
+                "example": {
+                  "id": "39e1d11f-3c12-44a8-a788-75c5747e1a8e",
+                  "event": "all",
+                  "url": "https://api.your-app.com/webhooks/malvo",
+                  "createdAt": "2026-06-10T12:00:00.000Z",
+                  "updatedAt": "2026-06-12T08:15:00.000Z",
+                  "disabled": null
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "URL inválida (`http://`/`localhost`/host privado), valor de `event` desconhecido, ou corpo malformado.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GlobalErrorResponse"
+                },
+                "example": {
+                  "code": 400,
+                  "message": "Invalid webhook URL: only https:// URLs are allowed",
+                  "codeDescription": "VALIDATION_ERROR"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          }
+        }
+      },
+      "delete": {
+        "tags": ["Webhooks"],
+        "operationId": "deleteWebhook",
+        "summary": "Remover webhook",
+        "description": "Remove permanentemente um webhook. Retorna `200` com corpo vazio (`{}`). Retorna `404` se o webhook não for encontrado.",
+        "responses": {
+          "200": {
+            "description": "Webhook removido. Corpo vazio.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "description": "Corpo vazio.",
+                  "example": {}
+                },
+                "example": {}
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "apiKeyAuth": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "X-API-KEY",
+        "description": "Chave de API da aplicação (TTL de 2h). Renove via `POST /auth` com `clientId`/`clientSecret`. Em caso de `401`, regenere a apiKey."
+      }
+    },
+    "schemas": {
+      "WebhookEvent": {
+        "type": "string",
+        "description": "Tipo de evento ao qual o webhook é assinado. Para compatibilidade, o registro aceita o enum completo. Eventos marcados **(never fired)** pertencem à iniciação de pagamento, que está fora do escopo da Malvo: o registro funciona, mas a Malvo nunca os emite.",
+        "enum": [
+          "all",
+          "item/created",
+          "item/updated",
+          "item/error",
+          "item/deleted",
+          "item/waiting_user_input",
+          "item/login_succeeded",
+          "transactions/created",
+          "transactions/updated",
+          "transactions/deleted",
+          "connector/status_updated",
+          "payment_intent/created",
+          "payment_intent/waiting_payer_authorization",
+          "payment_intent/completed",
+          "payment_intent/error",
+          "scheduled_payment/created",
+          "scheduled_payment/completed",
+          "scheduled_payment/error",
+          "scheduled_payment/canceled",
+          "automatic_pix_payment/created",
+          "automatic_pix_payment/completed",
+          "automatic_pix_payment/error",
+          "automatic_pix_payment/canceled",
+          "smart_transfer_preauthorization/completed",
+          "smart_transfer_preauthorization/error",
+          "smart_transfer_payment/completed",
+          "smart_transfer_payment/error",
+          "payment_request/updated"
+        ],
+        "example": "all"
+      },
+      "Webhook": {
+        "type": "object",
+        "description": "Webhook registrado na aplicação. O campo `headers` é write-only e nunca aparece neste objeto de resposta.",
+        "required": ["id", "event", "url", "createdAt", "updatedAt", "disabled"],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Identificador único do webhook, gerado pela Malvo.",
+            "example": "39e1d11f-3c12-44a8-a788-75c5747e1a8e"
+          },
+          "event": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/WebhookEvent"
+              }
+            ],
+            "description": "Tipo de evento assinado (um valor do enum, incluindo `all`)."
+          },
+          "url": {
+            "type": "string",
+            "format": "uri",
+            "description": "URL HTTPS de destino, validada no momento de criar/atualizar.",
+            "example": "https://api.your-app.com/webhooks/malvo"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Data/hora de criação (ISO 8601, UTC, milissegundos).",
+            "example": "2026-06-10T12:00:00.000Z"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Data/hora da última atualização (ISO 8601, UTC, milissegundos).",
+            "example": "2026-06-10T12:00:00.000Z"
+          },
+          "disabled": {
+            "type": ["string", "null"],
+            "format": "date-time",
+            "description": "Timestamp (ISO 8601) de quando o webhook foi desabilitado; `null` quando ativo. Configurável via `PATCH`.",
+            "example": null
+          }
+        },
+        "example": {
+          "id": "39e1d11f-3c12-44a8-a788-75c5747e1a8e",
+          "event": "all",
+          "url": "https://api.your-app.com/webhooks/malvo",
+          "createdAt": "2026-06-10T12:00:00.000Z",
+          "updatedAt": "2026-06-10T12:00:00.000Z",
+          "disabled": null
+        }
+      },
+      "WebhookCreate": {
+        "type": "object",
+        "description": "Corpo para criar um webhook.",
+        "required": ["url", "event"],
+        "properties": {
+          "url": {
+            "type": "string",
+            "format": "uri",
+            "description": "URL de destino. Deve ser `https://` e não pode ser `localhost`/host privado.",
+            "example": "https://api.your-app.com/webhooks/malvo"
+          },
+          "event": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/WebhookEvent"
+              }
+            ],
+            "description": "Tipo de evento a assinar. Aceita qualquer valor do enum."
+          },
+          "headers": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            },
+            "writeOnly": true,
+            "description": "**Write-only / API-only.** Mapa nome→valor de headers enviados verbatim em cada entrega. Nunca é retornado em respostas nem visível/editável no Dashboard. Use para autenticação das entregas (ex.: `Authorization: Bearer ...`).",
+            "example": {
+              "Authorization": "Bearer <your-shared-secret>",
+              "X-CLIENT-ID": "<secret>"
+            }
+          }
+        },
+        "example": {
+          "url": "https://api.your-app.com/webhooks/malvo",
+          "event": "all",
+          "headers": {
+            "Authorization": "Bearer <your-shared-secret>",
+            "X-CLIENT-ID": "<secret>"
+          }
+        }
+      },
+      "WebhookUpdate": {
+        "type": "object",
+        "description": "Corpo para atualizar parcialmente um webhook. Apenas os campos enviados são alterados.",
+        "properties": {
+          "url": {
+            "type": "string",
+            "format": "uri",
+            "description": "Nova URL de destino (HTTPS, não-localhost).",
+            "example": "https://api.your-app.com/webhooks/malvo"
+          },
+          "event": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/WebhookEvent"
+              }
+            ],
+            "description": "Novo tipo de evento assinado."
+          },
+          "headers": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            },
+            "writeOnly": true,
+            "description": "**Write-only / API-only.** Substitui os headers customizados de entrega. Mecanismo para rotacionar segredos de autenticação. Nunca é retornado.",
+            "example": {
+              "Authorization": "Bearer <rotated-secret>"
+            }
+          },
+          "disabled": {
+            "type": ["string", "null"],
+            "format": "date-time",
+            "description": "Defina um timestamp ISO 8601 para desabilitar o webhook, ou `null` para reativá-lo.",
+            "example": "2026-06-12T08:15:00.000Z"
+          }
+        },
+        "example": {
+          "headers": {
+            "Authorization": "Bearer <rotated-secret>"
+          }
+        }
+      },
+      "WebhooksList": {
+        "type": "object",
+        "description": "Envelope paginado padrão da Malvo para a listagem de webhooks.",
+        "required": ["total", "totalPages", "page", "results"],
+        "properties": {
+          "total": {
+            "type": "integer",
+            "description": "Número total de webhooks.",
+            "example": 2
+          },
+          "totalPages": {
+            "type": "integer",
+            "description": "Número total de páginas.",
+            "example": 1
+          },
+          "page": {
+            "type": "integer",
+            "description": "Página atual (base 1).",
+            "example": 1
+          },
+          "results": {
+            "type": "array",
+            "description": "Webhooks da página atual (sem `headers`).",
+            "items": {
+              "$ref": "#/components/schemas/Webhook"
+            }
+          }
+        },
+        "example": {
+          "total": 2,
+          "totalPages": 1,
+          "page": 1,
+          "results": [
+            {
+              "id": "39e1d11f-3c12-44a8-a788-75c5747e1a8e",
+              "event": "all",
+              "url": "https://api.your-app.com/webhooks/malvo",
+              "createdAt": "2026-06-10T12:00:00.000Z",
+              "updatedAt": "2026-06-10T12:00:00.000Z",
+              "disabled": null
+            },
+            {
+              "id": "7d2a02c1-9c1b-43c5-b144-1bb39b0e8f3c",
+              "event": "item/error",
+              "url": "https://api.your-app.com/webhooks/malvo-errors",
+              "createdAt": "2026-06-01T09:30:00.000Z",
+              "updatedAt": "2026-06-01T09:30:00.000Z",
+              "disabled": null
+            }
+          ]
+        }
+      },
+      "GlobalErrorResponse": {
+        "type": "object",
+        "description": "Formato padrão de erro da API da Malvo.",
+        "required": ["code", "message"],
+        "properties": {
+          "code": {
+            "type": "integer",
+            "description": "Código de status HTTP do erro.",
+            "example": 400
+          },
+          "message": {
+            "type": "string",
+            "description": "Mensagem legível descrevendo o erro.",
+            "example": "Webhook limit reached"
+          },
+          "codeDescription": {
+            "type": "string",
+            "description": "Descrição/categoria opcional do código de erro.",
+            "example": "VALIDATION_ERROR"
+          },
+          "data": {
+            "type": "object",
+            "description": "Dados adicionais opcionais sobre o erro.",
+            "additionalProperties": true
+          }
+        },
+        "example": {
+          "code": 400,
+          "message": "Webhook limit reached",
+          "codeDescription": "VALIDATION_ERROR"
+        }
+      }
+    },
+    "responses": {
+      "Unauthorized": {
+        "description": "`X-API-KEY` ausente ou expirado (TTL de 2h). Regenere a apiKey via `POST /auth`.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/GlobalErrorResponse"
+            },
+            "example": {
+              "code": 401,
+              "message": "Missing or invalid X-API-KEY",
+              "codeDescription": "UNAUTHORIZED"
+            }
+          }
+        }
+      },
+      "Forbidden": {
+        "description": "A apiKey não tem escopo, ou o recurso pertence a outra aplicação.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/GlobalErrorResponse"
+            },
+            "example": {
+              "code": 403,
+              "message": "Forbidden",
+              "codeDescription": "FORBIDDEN"
+            }
+          }
+        }
+      },
+      "NotFound": {
+        "description": "Webhook não encontrado, ou pertence a outra aplicação.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/GlobalErrorResponse"
+            },
+            "example": {
+              "code": 404,
+              "message": "Webhook not found",
+              "codeDescription": "NOT_FOUND"
+            }
+          }
+        }
+      },
+      "TooManyRequests": {
+        "description": "Limite de taxa excedido. Aplique backoff exponencial com jitter e respeite o header `Retry-After`.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/GlobalErrorResponse"
+            },
+            "example": {
+              "code": 429,
+              "message": "Too many requests",
+              "codeDescription": "RATE_LIMIT_EXCEEDED"
+            }
+          }
+        }
+      },
+      "InternalServerError": {
+        "description": "Erro transitório do lado da plataforma. Tente novamente com backoff; se persistir, consulte a status page.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/GlobalErrorResponse"
+            },
+            "example": {
+              "code": 500,
+              "message": "Internal server error",
+              "codeDescription": "INTERNAL_ERROR"
+            }
+          }
+        }
+      }
+    }
+  }
+}

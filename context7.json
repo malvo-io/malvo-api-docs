@@ -1,0 +1,30 @@
+{
+  "$schema": "https://context7.com/schema/context7.json",
+  "projectTitle": "Malvo API",
+  "description": "Documentação da API REST da Malvo, camada de dados de Open Finance Brasil e Open Banking AIS (Europa e Reino Unido): autenticação, Connect Widget, items e consentimentos, contas, cartões e faturas, transações categorizadas, investimentos, empréstimos, identidade, enriquecimento e webhooks. Inclui a referência de cada endpoint com exemplos em curl e respostas JSON.",
+  "branch": "main",
+  "folders": [
+    "docs"
+  ],
+  "excludeFolders": [
+    "tests",
+    "scripts",
+    "openapi"
+  ],
+  "excludeFiles": [],
+  "rules": [
+    "Autentique no servidor: POST /auth com clientId e clientSecret devolve uma apiKey válida por 2 horas; envie-a no header X-API-KEY em todas as outras chamadas.",
+    "Renove a apiKey com um novo POST /auth perto de 1h50 ou no primeiro 401; em POST /connect_token, a apiKey ausente ou expirada retorna 403.",
+    "Use sempre a base URL https://api.malvo.io; não existem subdomínios de API.",
+    "Nunca exponha clientSecret nem apiKey no front-end ou em apps móveis; gere um connectToken de 30 minutos com POST /connect_token e entregue só ele ao Connect Widget.",
+    "A Malvo faz só agregação e categorização de dados; não há iniciação de pagamentos.",
+    "Listas paginadas usam page (base 1) e pageSize e terminam quando page >= totalPages; GET /v2/transactions usa cursor e termina quando next é null.",
+    "Use GET /v2/transactions em integrações novas; GET /transactions está depreciado.",
+    "Trate erros pelo codeDescription do envelope GlobalErrorResponse, nunca pelo texto de message.",
+    "No 429, aguarde RateLimit-Reset ou Retry-After e repita com backoff exponencial e jitter; PATCH /items/{id} aceita só 20 requisições por minuto por IP.",
+    "Os webhooks são a fonte da verdade do estado do Item; o onSuccess do Connect Widget é best-effort.",
+    "Verifique o header Malvo-Signature (HMAC-SHA256 de {t}.{corpo cru} com o signing secret) antes de processar um webhook e deduplique por eventId.",
+    "Não fixe IDs de conectores no código; consulte GET /connectors em tempo de execução.",
+    "Ofereça ao usuário uma ação de desconectar que chame DELETE /items/{id} para revogar o consentimento."
+  ]
+}

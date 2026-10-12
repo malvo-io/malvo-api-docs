@@ -1,0 +1,838 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Malvo — Inteligência & Enriquecimento",
+    "version": "1.0.0",
+    "description": "APIs de Inteligência e Enriquecimento da Malvo, servidas no host único `https://api.malvo.io` e com contrato wire estável. Autenticação por header `X-API-KEY` em todas as operações. Estas APIs entregam KPIs agregados por item (Item Insights), enriquecimento/categorização de transações próprias do cliente (Enrich) e detecção de pagamentos recorrentes (assinaturas, salários, contas). Não há iniciação de pagamento (sem ITP). Prosa em pt-BR; nomes de campos e enums em inglês, conforme a especificação."
+  },
+  "servers": [
+    { "url": "https://api.malvo.io" }
+  ],
+  "security": [
+    { "apiKeyAuth": [] }
+  ],
+  "tags": [
+    {
+      "name": "Insights",
+      "description": "KPIs agregados e pré-computados por item e por classe de conta (subscrição de crédito, segmentação)."
+    },
+    {
+      "name": "Enrich",
+      "description": "Enriquecimento de transações: categorização/identificação de merchant e detecção de pagamentos recorrentes."
+    }
+  ],
+  "paths": {
+    "/book": {
+      "post": {
+        "tags": ["Insights"],
+        "operationId": "createItemInsights",
+        "summary": "Gerar Item Insights",
+        "description": "Retorna KPIs agregados e pré-computados por item e por classe de conta. Computa fluxo de caixa (débitos vs. créditos), distribuições de contagem de transações por faixa de data-do-mês (`1-5`, `6-10`, `11-15`, `16-20`, `21-25`, `26-31`) e por faixa de valor (`0-50`, `50-100`, … até `50000-MAX`), razão crédito/débito (`creditDebitRatio`), média/mínimo/máximo de valor, breakdown por categoria e breakdown por subtipo de conta (`SAVINGS_ACCOUNT` vs. `CHECKING_ACCOUNT`). Os KPIs são entregues nas janelas temporais `M1`, `M3`, `M12` e `allTime`. O parâmetro `itemIds` aceita um ou mais ids de item (CSV); a resposta agrupa os insights por item e por classe de conta (`bankAccount`, `creditCard`). Recomputado quando o item é re-sincronizado — chame novamente após uma sincronização.",
+        "parameters": [
+          {
+            "name": "itemIds",
+            "in": "query",
+            "required": true,
+            "description": "Lista de ids de item separados por vírgula (1 ou mais). Ex.: `a0922d6f-2007-4169-a181-b961500608db,207f5bcd-312a-439c-abbe-166b6632c980`.",
+            "schema": {
+              "type": "string"
+            },
+            "example": "a0922d6f-2007-4169-a181-b961500608db"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Array de insights agregados, um objeto `ItemInsights` por `itemId` solicitado.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": { "$ref": "#/components/schemas/ItemInsights" }
+                },
+                "example": [{
+                  "itemId": "a0922d6f-2007-4169-a181-b961500608db",
+                  "bankAccount": {
+                    "M1": {
+                      "count": 42,
+                      "amount": 12345.67,
+                      "avg": 293.94,
+                      "min": 1,
+                      "max": 1200,
+                      "creditDebitRatio": 0.8,
+                      "categories": {
+                        "Transfers": 5230.5,
+                        "Third-party transfers": 1200,
+                        "Credit-card fees": 89.9,
+                        "Uncategorized": 410.2
+                      },
+                      "byDate": {
+                        "1-5": 6,
+                        "6-10": 8,
+                        "11-15": 7,
+                        "16-20": 5,
+                        "21-25": 9,
+                        "26-31": 7
+                      },
+                      "byAmount": {
+                        "0-50": 12,
+                        "50-100": 9,
+                        "100-500": 14,
+                        "500-1000": 4,
+                        "1000-50000": 3,
+                        "50000-MAX": 0
+                      },
+                      "bySubtype": {
+                        "CHECKING_ACCOUNT": 11800.47,
+                        "SAVINGS_ACCOUNT": 545.2
+                      },
+                      "byType": {
+                        "CREDIT": 6890.3,
+                        "DEBIT": 5455.37
+                      }
+                    },
+                    "M3": {
+                      "count": 128,
+                      "amount": 37210.11,
+                      "avg": 290.7,
+                      "min": 1,
+                      "max": 4200,
+                      "creditDebitRatio": 0.92,
+                      "categories": {
+                        "Transfers": 15800.1,
+                        "Uncategorized": 980.4
+                      },
+                      "byDate": {
+                        "1-5": 20,
+                        "6-10": 22,
+                        "11-15": 21,
+                        "16-20": 18,
+                        "21-25": 25,
+                        "26-31": 22
+                      },
+                      "byAmount": {
+                        "0-50": 38,
+                        "50-100": 27,
+                        "100-500": 41,
+                        "500-1000": 12,
+                        "1000-50000": 10,
+                        "50000-MAX": 0
+                      },
+                      "bySubtype": {
+                        "CHECKING_ACCOUNT": 35100.0,
+                        "SAVINGS_ACCOUNT": 2110.11
+                      },
+                      "byType": {
+                        "CREDIT": 19200.5,
+                        "DEBIT": 18009.61
+                      }
+                    },
+                    "M12": {
+                      "count": 503,
+                      "amount": 148922.4,
+                      "avg": 296.07,
+                      "min": 1,
+                      "max": 12000,
+                      "creditDebitRatio": 0.97,
+                      "categories": {
+                        "Transfers": 62000.0,
+                        "Uncategorized": 3120.5
+                      },
+                      "byDate": {
+                        "1-5": 80,
+                        "6-10": 86,
+                        "11-15": 83,
+                        "16-20": 79,
+                        "21-25": 90,
+                        "26-31": 85
+                      },
+                      "byAmount": {
+                        "0-50": 150,
+                        "50-100": 110,
+                        "100-500": 160,
+                        "500-1000": 45,
+                        "1000-50000": 38,
+                        "50000-MAX": 0
+                      },
+                      "bySubtype": {
+                        "CHECKING_ACCOUNT": 140000.0,
+                        "SAVINGS_ACCOUNT": 8922.4
+                      },
+                      "byType": {
+                        "CREDIT": 75500.0,
+                        "DEBIT": 73422.4
+                      }
+                    },
+                    "allTime": {
+                      "count": 1290,
+                      "amount": 402311.88,
+                      "avg": 311.87,
+                      "min": 1,
+                      "max": 25000,
+                      "creditDebitRatio": 1.01,
+                      "categories": {
+                        "Transfers": 180000.0,
+                        "Uncategorized": 9800.2
+                      },
+                      "byDate": {
+                        "1-5": 205,
+                        "6-10": 218,
+                        "11-15": 212,
+                        "16-20": 201,
+                        "21-25": 230,
+                        "26-31": 224
+                      },
+                      "byAmount": {
+                        "0-50": 380,
+                        "50-100": 280,
+                        "100-500": 410,
+                        "500-1000": 120,
+                        "1000-50000": 100,
+                        "50000-MAX": 0
+                      },
+                      "bySubtype": {
+                        "CHECKING_ACCOUNT": 380000.0,
+                        "SAVINGS_ACCOUNT": 22311.88
+                      },
+                      "byType": {
+                        "CREDIT": 203000.0,
+                        "DEBIT": 199311.88
+                      }
+                    }
+                  },
+                  "creditCard": {
+                    "M1": {
+                      "count": 18,
+                      "amount": 4210.55,
+                      "avg": 233.92,
+                      "min": 9.9,
+                      "max": 980,
+                      "creditDebitRatio": 0.0,
+                      "categories": {
+                        "Eating out": 1200.3,
+                        "Video streaming": 58,
+                        "Uncategorized": 210.0
+                      },
+                      "byDate": {
+                        "1-5": 3,
+                        "6-10": 4,
+                        "11-15": 2,
+                        "16-20": 3,
+                        "21-25": 4,
+                        "26-31": 2
+                      },
+                      "byAmount": {
+                        "0-50": 8,
+                        "50-100": 4,
+                        "100-500": 5,
+                        "500-1000": 1,
+                        "1000-50000": 0,
+                        "50000-MAX": 0
+                      },
+                      "bySubtype": {
+                        "CREDIT_CARD": 4210.55
+                      },
+                      "byType": {
+                        "DEBIT": 4210.55,
+                        "CREDIT": 0
+                      }
+                    },
+                    "M3": {
+                      "count": 51,
+                      "amount": 12880.0,
+                      "avg": 252.55,
+                      "min": 9.9,
+                      "max": 1500,
+                      "creditDebitRatio": 0.0,
+                      "categories": {
+                        "Eating out": 3400.0,
+                        "Uncategorized": 620.0
+                      },
+                      "byDate": {
+                        "1-5": 9,
+                        "6-10": 10,
+                        "11-15": 8,
+                        "16-20": 7,
+                        "21-25": 9,
+                        "26-31": 8
+                      },
+                      "byAmount": {
+                        "0-50": 22,
+                        "50-100": 12,
+                        "100-500": 14,
+                        "500-1000": 2,
+                        "1000-50000": 1,
+                        "50000-MAX": 0
+                      },
+                      "bySubtype": {
+                        "CREDIT_CARD": 12880.0
+                      },
+                      "byType": {
+                        "DEBIT": 12880.0,
+                        "CREDIT": 0
+                      }
+                    },
+                    "M12": {
+                      "count": 205,
+                      "amount": 51200.0,
+                      "avg": 249.76,
+                      "min": 5.5,
+                      "max": 3200,
+                      "creditDebitRatio": 0.0,
+                      "categories": {
+                        "Eating out": 13800.0,
+                        "Uncategorized": 2400.0
+                      },
+                      "byDate": {
+                        "1-5": 34,
+                        "6-10": 36,
+                        "11-15": 33,
+                        "16-20": 32,
+                        "21-25": 36,
+                        "26-31": 34
+                      },
+                      "byAmount": {
+                        "0-50": 90,
+                        "50-100": 48,
+                        "100-500": 55,
+                        "500-1000": 8,
+                        "1000-50000": 4,
+                        "50000-MAX": 0
+                      },
+                      "bySubtype": {
+                        "CREDIT_CARD": 51200.0
+                      },
+                      "byType": {
+                        "DEBIT": 51200.0,
+                        "CREDIT": 0
+                      }
+                    },
+                    "allTime": {
+                      "count": 540,
+                      "amount": 138900.0,
+                      "avg": 257.22,
+                      "min": 5.5,
+                      "max": 6800,
+                      "creditDebitRatio": 0.0,
+                      "categories": {
+                        "Eating out": 37000.0,
+                        "Uncategorized": 6100.0
+                      },
+                      "byDate": {
+                        "1-5": 88,
+                        "6-10": 92,
+                        "11-15": 86,
+                        "16-20": 84,
+                        "21-25": 95,
+                        "26-31": 95
+                      },
+                      "byAmount": {
+                        "0-50": 230,
+                        "50-100": 130,
+                        "100-500": 150,
+                        "500-1000": 20,
+                        "1000-50000": 10,
+                        "50000-MAX": 0
+                      },
+                      "bySubtype": {
+                        "CREDIT_CARD": 138900.0
+                      },
+                      "byType": {
+                        "DEBIT": 138900.0,
+                        "CREDIT": 0
+                      }
+                    }
+                  }
+                }]
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/GlobalError" },
+          "401": { "$ref": "#/components/responses/GlobalError" },
+          "429": { "$ref": "#/components/responses/GlobalError" },
+          "500": { "$ref": "#/components/responses/GlobalError" }
+        }
+      }
+    },
+    "/categorization": {
+      "post": {
+        "tags": ["Enrich"],
+        "operationId": "enrichTransactions",
+        "summary": "Categorizar e enriquecer transações",
+        "description": "Executa transações de propriedade do cliente através do classificador (não requer item). Aceita até 5.000 transações por requisição (divida lotes maiores). Para cada transação são obrigatórios `id`, `amount`, `date` e `description`; os campos opcionais (`accountType`, `isBusinessAccount`, `paymentData`, `creditCardMcc`) melhoram materialmente a precisão. Retorna, por transação, a identificação do merchant, a `description` normalizada, a `category` e a tipagem `DEBIT`/`CREDIT`.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["transactions"],
+                "properties": {
+                  "transactions": {
+                    "type": "array",
+                    "description": "Lista de transações a enriquecer. Máximo de 5.000 itens por requisição.",
+                    "maxItems": 5000,
+                    "items": { "$ref": "#/components/schemas/EnrichTransactionInput" }
+                  }
+                }
+              },
+              "example": {
+                "transactions": [
+                  {
+                    "id": "tx-001",
+                    "amount": -89.90,
+                    "date": "2026-04-12",
+                    "description": "PAGTO PIX MERCADO PAO",
+                    "accountType": "CHECKING_ACCOUNT",
+                    "isBusinessAccount": false,
+                    "paymentData": {
+                      "payer": { "document": "12345678900" },
+                      "receiver": { "document": "11222333000182" }
+                    },
+                    "creditCardMcc": 5411
+                  }
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Resultados do enriquecimento, um por transação enviada.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["results"],
+                  "properties": {
+                    "results": {
+                      "type": "array",
+                      "items": { "$ref": "#/components/schemas/EnrichResult" }
+                    }
+                  }
+                },
+                "example": {
+                  "results": [
+                    {
+                      "id": "tx-001",
+                      "amount": -89.90,
+                      "date": "2026-04-12",
+                      "description": "Mercado Pão",
+                      "type": "DEBIT",
+                      "merchant": {
+                        "name": "Mercado Pão",
+                        "businessName": "Mercado Pão Ltda",
+                        "cnpj": "11.222.333/0001-82"
+                      },
+                      "category": "Eating out"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/GlobalError" },
+          "401": { "$ref": "#/components/responses/GlobalError" },
+          "429": { "$ref": "#/components/responses/GlobalError" },
+          "500": { "$ref": "#/components/responses/GlobalError" }
+        }
+      }
+    },
+    "/recurring-payments": {
+      "post": {
+        "tags": ["Enrich"],
+        "operationId": "detectRecurringPayments",
+        "summary": "Detectar pagamentos recorrentes",
+        "description": "Detecta assinaturas, salários, contas (utilities) e outros movimentos de caixa repetitivos a partir das transações de um item. Regras de detecção: ao menos 3 ocorrências; cadência aproximadamente mensal dentro de uma janela de ±5 dias; variância de valor ≤ 10%; descrições são convertidas para minúsculas e têm caracteres especiais removidos antes do casamento. A resposta é um array de padrões recorrentes.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["itemId"],
+                "properties": {
+                  "itemId": {
+                    "type": "string",
+                    "format": "uuid",
+                    "description": "Identificador primário do item cujas transações serão analisadas."
+                  }
+                }
+              },
+              "example": {
+                "itemId": "aaaaaaa1-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Array de padrões de pagamento recorrente detectados.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": { "$ref": "#/components/schemas/RecurringPayment" }
+                },
+                "example": [
+                  {
+                    "description": "netflix",
+                    "averageAmount": -58.0,
+                    "occurrences": [
+                      "a8534c85-53ce-4f21-94d7-50e9d2ee4957",
+                      "05c693bf-c196-47ea-a28c-8251d6bb8a06",
+                      "ff9ed929-edc4-408c-a959-d51f79ab1814"
+                    ],
+                    "regularityScore": 0.97
+                  },
+                  {
+                    "description": "salario empresa xyz",
+                    "averageAmount": 7500.0,
+                    "occurrences": [
+                      "6ec156fe-e8ac-4d9a-a4b3-7770529ab01c",
+                      "123456bf-c196-47ea-a28c-8251d6bb8777",
+                      "abced929-edc4-408c-a959-d51f79ab1123"
+                    ],
+                    "regularityScore": 0.88
+                  }
+                ]
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/GlobalError" },
+          "401": { "$ref": "#/components/responses/GlobalError" },
+          "429": { "$ref": "#/components/responses/GlobalError" },
+          "500": { "$ref": "#/components/responses/GlobalError" }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "apiKeyAuth": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "X-API-KEY",
+        "description": "Chave de API obrigatória em todas as operações."
+      }
+    },
+    "responses": {
+      "GlobalError": {
+        "description": "Resposta de erro padrão. Aplica-se a 400 (requisição inválida), 401 (não autenticado), 429 (limite de taxa) e 500 (erro interno).",
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "#/components/schemas/GlobalErrorResponse" },
+            "example": {
+              "code": 500,
+              "codeDescription": "INTERNAL_SERVER_ERROR",
+              "message": "Internal Server Error"
+            }
+          }
+        }
+      }
+    },
+    "schemas": {
+      "ItemInsights": {
+        "type": "object",
+        "description": "KPIs agregados de um item, agrupados por classe de conta (`bankAccount`, `creditCard`). Cada classe contém os KPIs nas janelas temporais `M1`, `M3`, `M12` e `allTime`.",
+        "required": ["itemId"],
+        "properties": {
+          "itemId": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Identificador do item ao qual os insights pertencem."
+          },
+          "bankAccount": {
+            "$ref": "#/components/schemas/InsightWindows",
+            "description": "KPIs das contas de depósito (BANK: corrente/poupança) do item."
+          },
+          "creditCard": {
+            "$ref": "#/components/schemas/InsightWindows",
+            "description": "KPIs das contas de cartão de crédito (CREDIT) do item."
+          }
+        },
+        "example": {
+          "itemId": "a0922d6f-2007-4169-a181-b961500608db",
+          "bankAccount": {
+            "M1": {
+              "count": 42,
+              "amount": 12345.67,
+              "avg": 293.94,
+              "min": 1,
+              "max": 1200,
+              "creditDebitRatio": 0.8,
+              "categories": { "Transfers": 5230.5, "Uncategorized": 410.2 },
+              "byDate": { "1-5": 6, "6-10": 8, "11-15": 7, "16-20": 5, "21-25": 9, "26-31": 7 },
+              "byAmount": { "0-50": 12, "50-100": 9, "100-500": 14, "500-1000": 4, "1000-50000": 3, "50000-MAX": 0 },
+              "bySubtype": { "CHECKING_ACCOUNT": 11800.47, "SAVINGS_ACCOUNT": 545.2 },
+              "byType": { "CREDIT": 6890.3, "DEBIT": 5455.37 }
+            },
+            "M3": {},
+            "M12": {},
+            "allTime": {}
+          },
+          "creditCard": {
+            "M1": {},
+            "M3": {},
+            "M12": {},
+            "allTime": {}
+          }
+        }
+      },
+      "InsightWindows": {
+        "type": "object",
+        "description": "Matriz de KPIs por janela temporal para uma classe de conta.",
+        "properties": {
+          "M1": { "$ref": "#/components/schemas/InsightWindow", "description": "Janela de 1 mês." },
+          "M3": { "$ref": "#/components/schemas/InsightWindow", "description": "Janela de 3 meses." },
+          "M12": { "$ref": "#/components/schemas/InsightWindow", "description": "Janela de 12 meses." },
+          "allTime": { "$ref": "#/components/schemas/InsightWindow", "description": "Todo o histórico disponível." }
+        }
+      },
+      "InsightWindow": {
+        "type": "object",
+        "description": "KPIs agregados de uma classe de conta numa janela temporal específica.",
+        "properties": {
+          "count": { "type": "integer", "description": "Número de transações na janela." },
+          "amount": { "type": "number", "description": "Soma dos valores das transações (fluxo de caixa) na janela." },
+          "avg": { "type": "number", "description": "Valor médio por transação." },
+          "min": { "type": "number", "description": "Menor valor de transação." },
+          "max": { "type": "number", "description": "Maior valor de transação." },
+          "creditDebitRatio": { "type": "number", "description": "Razão crédito/débito (créditos ÷ débitos)." },
+          "categories": {
+            "type": "object",
+            "description": "Breakdown por categoria (nome da categoria → valor agregado). Ex.: Transfers, Third-party transfers, Credit-card fees, Uncategorized.",
+            "additionalProperties": { "type": "number" }
+          },
+          "byDate": {
+            "type": "object",
+            "description": "Distribuição da contagem de transações por faixa de data-do-mês.",
+            "properties": {
+              "1-5": { "type": "integer" },
+              "6-10": { "type": "integer" },
+              "11-15": { "type": "integer" },
+              "16-20": { "type": "integer" },
+              "21-25": { "type": "integer" },
+              "26-31": { "type": "integer" }
+            }
+          },
+          "byAmount": {
+            "type": "object",
+            "description": "Distribuição da contagem de transações por faixa de valor (de `0-50` até `50000-MAX`).",
+            "additionalProperties": { "type": "integer" }
+          },
+          "bySubtype": {
+            "type": "object",
+            "description": "Breakdown por subtipo de conta (ex.: `CHECKING_ACCOUNT` vs. `SAVINGS_ACCOUNT`, ou `CREDIT_CARD`).",
+            "additionalProperties": { "type": "number" }
+          },
+          "byType": {
+            "type": "object",
+            "description": "Breakdown por direção da transação (`CREDIT` vs. `DEBIT`).",
+            "additionalProperties": { "type": "number" }
+          }
+        },
+        "example": {
+          "count": 42,
+          "amount": 12345.67,
+          "avg": 293.94,
+          "min": 1,
+          "max": 1200,
+          "creditDebitRatio": 0.8,
+          "categories": { "Transfers": 5230.5, "Uncategorized": 410.2 },
+          "byDate": { "1-5": 6, "6-10": 8, "11-15": 7, "16-20": 5, "21-25": 9, "26-31": 7 },
+          "byAmount": { "0-50": 12, "50-100": 9, "100-500": 14, "500-1000": 4, "1000-50000": 3, "50000-MAX": 0 },
+          "bySubtype": { "CHECKING_ACCOUNT": 11800.47, "SAVINGS_ACCOUNT": 545.2 },
+          "byType": { "CREDIT": 6890.3, "DEBIT": 5455.37 }
+        }
+      },
+      "EnrichTransactionInput": {
+        "type": "object",
+        "description": "Transação de entrada para enriquecimento. `id`, `amount`, `date` e `description` são obrigatórios; os demais campos são opcionais e melhoram a precisão.",
+        "required": ["id", "amount", "date", "description"],
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Identificador da transação fornecido pelo cliente; é ecoado na resposta."
+          },
+          "amount": {
+            "type": "number",
+            "description": "Valor da transação. Convenção de sinal por tipo de conta (negativo = saída em conta bancária)."
+          },
+          "date": {
+            "type": "string",
+            "description": "Data da transação no formato `yyyy-mm-dd`.",
+            "example": "2026-04-12"
+          },
+          "description": {
+            "type": "string",
+            "description": "Descrição bruta da transação (como recebida da instituição)."
+          },
+          "accountType": {
+            "type": "string",
+            "description": "Tipo de conta de origem.",
+            "enum": ["CHECKING_ACCOUNT", "SAVINGS_ACCOUNT", "CREDIT_CARD", "LOAN_ACCOUNT", "CASH_ACCOUNT", "OTHER_ACCOUNT"]
+          },
+          "isBusinessAccount": {
+            "type": "boolean",
+            "description": "Indica se a conta é pessoa jurídica (PJ)."
+          },
+          "paymentData": {
+            "type": "object",
+            "description": "Dados de pagamento/transferência. Documentos do pagador/recebedor melhoram a identificação do merchant.",
+            "properties": {
+              "payer": {
+                "type": "object",
+                "properties": {
+                  "document": { "type": "string", "description": "CPF/CNPJ do pagador (dígitos)." }
+                }
+              },
+              "receiver": {
+                "type": "object",
+                "properties": {
+                  "document": { "type": "string", "description": "CPF/CNPJ do recebedor (dígitos)." }
+                }
+              }
+            }
+          },
+          "creditCardMcc": {
+            "type": "integer",
+            "description": "Merchant Category Code (MCC) quando a transação é de cartão de crédito."
+          }
+        },
+        "example": {
+          "id": "tx-001",
+          "amount": -89.90,
+          "date": "2026-04-12",
+          "description": "PAGTO PIX MERCADO PAO",
+          "accountType": "CHECKING_ACCOUNT",
+          "isBusinessAccount": false,
+          "paymentData": {
+            "payer": { "document": "12345678900" },
+            "receiver": { "document": "11222333000182" }
+          },
+          "creditCardMcc": 5411
+        }
+      },
+      "EnrichResult": {
+        "type": "object",
+        "description": "Resultado do enriquecimento de uma transação: descrição normalizada, merchant, categoria e tipagem.",
+        "required": ["id", "amount", "date", "description", "type", "category"],
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Identificador da transação (ecoado da entrada)."
+          },
+          "amount": {
+            "type": "number",
+            "description": "Valor da transação (ecoado da entrada)."
+          },
+          "date": {
+            "type": "string",
+            "description": "Data da transação (`yyyy-mm-dd`).",
+            "example": "2026-04-12"
+          },
+          "description": {
+            "type": "string",
+            "description": "Descrição normalizada/limpa da transação."
+          },
+          "type": {
+            "type": "string",
+            "description": "Direção da transação na perspectiva do titular.",
+            "enum": ["DEBIT", "CREDIT"]
+          },
+          "merchant": {
+            "type": "object",
+            "description": "Merchant identificado, quando aplicável. Na prática, apenas `cnpj` chega de forma confiável; `name` é derivado a partir dele, e `businessName`/`cnpj` são best-effort (frequentemente ausentes).",
+            "properties": {
+              "name": { "type": "string", "description": "Nome de exibição do merchant, derivado do CNPJ." },
+              "businessName": { "type": "string", "description": "Razão social do merchant (best-effort; geralmente ausente)." },
+              "cnpj": { "type": "string", "description": "CNPJ do merchant (campo mais confiável; best-effort)." }
+            }
+          },
+          "category": {
+            "type": "string",
+            "description": "Categoria atribuída (nome em inglês)."
+          }
+        },
+        "example": {
+          "id": "tx-001",
+          "amount": -89.90,
+          "date": "2026-04-12",
+          "description": "Mercado Pão",
+          "type": "DEBIT",
+          "merchant": {
+            "name": "Mercado Pão",
+            "businessName": "Mercado Pão Ltda",
+            "cnpj": "11.222.333/0001-82"
+          },
+          "category": "Eating out"
+        }
+      },
+      "RecurringPayment": {
+        "type": "object",
+        "description": "Padrão de pagamento recorrente detectado a partir das transações de um item.",
+        "required": ["description", "averageAmount", "occurrences", "regularityScore"],
+        "properties": {
+          "description": {
+            "type": "string",
+            "description": "Rótulo normalizado do merchant/pagamento (minúsculo, sem caracteres especiais)."
+          },
+          "averageAmount": {
+            "type": "number",
+            "description": "Valor médio entre as ocorrências. Negativo = despesa recorrente; positivo = renda recorrente."
+          },
+          "occurrences": {
+            "type": "array",
+            "description": "Ids das transações de origem que casam com o padrão (ao menos 3).",
+            "items": { "type": "string" }
+          },
+          "regularityScore": {
+            "type": "number",
+            "description": "Pontuação de regularidade entre 0 e 1. Quanto maior, mais previsível a cadência.",
+            "minimum": 0,
+            "maximum": 1
+          }
+        },
+        "example": {
+          "description": "netflix",
+          "averageAmount": -58.0,
+          "occurrences": [
+            "a8534c85-53ce-4f21-94d7-50e9d2ee4957",
+            "05c693bf-c196-47ea-a28c-8251d6bb8a06",
+            "ff9ed929-edc4-408c-a959-d51f79ab1814"
+          ],
+          "regularityScore": 0.97
+        }
+      },
+      "GlobalErrorResponse": {
+        "type": "object",
+        "description": "Envelope de erro padrão. `code` espelha o status HTTP; `codeDescription` é um código legível por máquina; `data` traz dados adicionais quando houver.",
+        "required": ["code", "message"],
+        "properties": {
+          "code": {
+            "type": "number",
+            "description": "Espelha o código de status HTTP."
+          },
+          "message": {
+            "type": "string",
+            "description": "Mensagem legível por humanos."
+          },
+          "codeDescription": {
+            "type": "string",
+            "description": "Código distintivo legível por máquina (ex.: `INTERNAL_SERVER_ERROR`, `ACCOUNT_NOT_FOUND`)."
+          },
+          "data": {
+            "type": "object",
+            "description": "Dados adicionais relacionados ao erro, quando houver.",
+            "additionalProperties": true
+          }
+        },
+        "example": {
+          "code": 400,
+          "codeDescription": "VALIDATION_ERROR",
+          "message": "itemIds should not be null or undefined"
+        }
+      }
+    }
+  }
+}
