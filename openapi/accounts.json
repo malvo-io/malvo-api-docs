@@ -1,0 +1,1211 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Malvo — Contas & Faturas",
+    "version": "1.0.0",
+    "description": "API de Contas (Accounts) e Faturas de cartão de crédito (Credit Card Bills) da Malvo, com contrato público estável. Autenticação por header X-API-KEY em todas as rotas. Os produtos pendem de um item (itemId = uma conexão usuário↔instituição). Convenção de saldo (campo `balance` em Account): para contas bancárias (type=BANK) representa o dinheiro disponível agora (negativo indica uso de cheque especial); para cartões de crédito (type=CREDIT) representa o valor da fatura atualmente em aberto. Host único: https://api.malvo.io."
+  },
+  "servers": [
+    {
+      "url": "https://api.malvo.io"
+    }
+  ],
+  "security": [
+    {
+      "apiKeyAuth": []
+    }
+  ],
+  "tags": [
+    {
+      "name": "Accounts",
+      "description": "Contas bancárias e de cartão de crédito coletadas para um item."
+    },
+    {
+      "name": "Bills",
+      "description": "Faturas (faturas de cartão de crédito) de uma conta do tipo CREDIT_CARD."
+    }
+  ],
+  "paths": {
+    "/accounts": {
+      "get": {
+        "tags": ["Accounts"],
+        "summary": "Listar contas",
+        "description": "Recupera todas as contas coletadas para o item informado.",
+        "operationId": "listAccounts",
+        "parameters": [
+          {
+            "name": "itemId",
+            "in": "query",
+            "required": true,
+            "description": "Identificador primário do item.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "type",
+            "in": "query",
+            "required": false,
+            "description": "Filtra entre contas bancárias e contas de crédito.",
+            "schema": {
+              "type": "string",
+              "enum": ["BANK", "CREDIT"]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Envelope paginado com a lista de contas.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/PaginatedEnvelope"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "results": {
+                          "type": "array",
+                          "items": {
+                            "$ref": "#/components/schemas/Account"
+                          }
+                        }
+                      }
+                    }
+                  ]
+                },
+                "example": {
+                  "page": 1,
+                  "total": 2,
+                  "totalPages": 1,
+                  "results": [
+                    {
+                      "id": "a658c848-e475-457b-8565-d1fffba127c4",
+                      "type": "BANK",
+                      "subtype": "CHECKING_ACCOUNT",
+                      "number": "0001/12345-0",
+                      "name": "Conta Corrente",
+                      "marketingName": "GOLD Conta Corrente",
+                      "balance": 120950,
+                      "balanceAvailable": true,
+                      "balanceUpdatedAt": "2026-07-19T12:00:00.000Z",
+                      "itemId": "a0922d6f-2007-4169-a181-b961500608db",
+                      "taxNumber": "416.799.495-01",
+                      "owner": "John Doe",
+                      "currencyCode": "BRL",
+                      "createdAt": "2026-07-01T12:00:00.000Z",
+                      "updatedAt": "2026-07-19T12:00:00.000Z",
+                      "bankData": {
+                        "transferNumber": "0001/12345-0",
+                        "closingBalance": 120950,
+                        "automaticallyInvestedBalance": 100,
+                        "overdraftContractedLimit": 0,
+                        "overdraftUsedLimit": 0,
+                        "unarrangedOverdraftAmount": 0
+                      }
+                    },
+                    {
+                      "id": "a658c848-e475-457b-8565-d1fffba127c4",
+                      "type": "CREDIT",
+                      "subtype": "CREDIT_CARD",
+                      "number": "xxxx8670",
+                      "name": "Mastercard Black",
+                      "marketingName": "BANCO EXEMPLO MASTERCARD BLACK",
+                      "balance": 120950,
+                      "balanceAvailable": true,
+                      "balanceUpdatedAt": "2026-07-19T12:00:00.000Z",
+                      "itemId": "a0922d6f-2007-4169-a181-b961500608db",
+                      "taxNumber": "416.799.495-01",
+                      "owner": "John Doe",
+                      "currencyCode": "BRL",
+                      "createdAt": "2026-07-01T12:00:00.000Z",
+                      "updatedAt": "2026-07-19T12:00:00.000Z",
+                      "creditData": {
+                        "level": "BLACK",
+                        "brand": "MASTERCARD",
+                        "balanceCloseDate": "2022-01-03",
+                        "balanceDueDate": "2022-01-03",
+                        "availableCreditLimit": 200000,
+                        "balanceForeignCurrency": 0,
+                        "minimumPayment": 16190,
+                        "creditLimit": 300000,
+                        "status": "ACTIVE",
+                        "holderType": "MAIN"
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "itemId ausente ou inválido.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GlobalErrorResponse"
+                },
+                "example": {
+                  "code": 400,
+                  "message": "itemId should not be null or undefined, itemId must be a UUID"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Erro interno.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GlobalErrorResponse"
+                },
+                "example": {
+                  "code": 500,
+                  "codeDescription": "INTERNAL_SERVER_ERROR",
+                  "message": "Internal Server Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/accounts/{id}": {
+      "get": {
+        "tags": ["Accounts"],
+        "summary": "Recuperar conta",
+        "description": "Recupera uma única conta pelo seu identificador primário.",
+        "operationId": "retrieveAccount",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "Identificador primário da conta.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Objeto Account.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Account"
+                },
+                "example": {
+                  "id": "a658c848-e475-457b-8565-d1fffba127c4",
+                  "type": "BANK",
+                  "subtype": "CHECKING_ACCOUNT",
+                  "number": "0001/12345-0",
+                  "name": "Conta Corrente",
+                  "marketingName": "GOLD Conta Corrente",
+                  "balance": 120950,
+                  "balanceAvailable": true,
+                  "balanceUpdatedAt": "2026-07-19T12:00:00.000Z",
+                  "itemId": "a0922d6f-2007-4169-a181-b961500608db",
+                  "taxNumber": "416.799.495-01",
+                  "owner": "John Doe",
+                  "currencyCode": "BRL",
+                  "createdAt": "2026-07-01T12:00:00.000Z",
+                  "updatedAt": "2026-07-19T12:00:00.000Z",
+                  "bankData": {
+                    "transferNumber": "0001/12345-0",
+                    "closingBalance": 120950,
+                    "automaticallyInvestedBalance": 100,
+                    "overdraftContractedLimit": 0,
+                    "overdraftUsedLimit": 0,
+                    "unarrangedOverdraftAmount": 0
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Conta não encontrada.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GlobalErrorResponse"
+                },
+                "example": {
+                  "code": 404,
+                  "codeDescription": "ACCOUNT_NOT_FOUND",
+                  "message": "account not found"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Erro interno.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GlobalErrorResponse"
+                },
+                "example": {
+                  "code": 500,
+                  "codeDescription": "INTERNAL_SERVER_ERROR",
+                  "message": "Internal Server Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/accounts/{id}/balance": {
+      "get": {
+        "tags": ["Accounts"],
+        "summary": "Saldo mais recente",
+        "description": "Retorna o último saldo persistido pela sincronização do Item; esta leitura não chama a instituição. `updateDateTime` informa quando o provedor coletou o saldo. Em contas multimoeda ou respostas que não admitem um scalar fiel, `balanceAvailable=false`, `balance=null` e `balances` preserva o conjunto recebido.",
+        "operationId": "getAccountBalance",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "Identificador primário da conta.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Último saldo coletado.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BalanceResponse"
+                },
+                "example": {
+                  "balance": 1500.5,
+                  "balanceAvailable": true,
+                  "blockedBalance": 0,
+                  "automaticallyInvestedBalance": 200,
+                  "currencyCode": "BRL",
+                  "updateDateTime": "2024-01-15T10:30:00Z"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Conta não encontrada.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GlobalErrorResponse"
+                },
+                "example": {
+                  "message": "account not found for the given id",
+                  "code": 404
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Erro ao carregar o saldo persistido.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GlobalErrorResponse"
+                },
+                "example": {
+                  "message": "could not load account",
+                  "code": 500
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/accounts/{id}/statements": {
+      "get": {
+        "tags": ["Accounts"],
+        "summary": "Listar extratos da conta",
+        "description": "Recupera todos os extratos (PDF) coletados para a conta. O campo `url` é uma URL assinada válida por 30 minutos. O formato de `monthYear` é MM-YYYY.",
+        "operationId": "listAccountStatements",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "Identificador primário da conta.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Envelope paginado com os extratos.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/PaginatedEnvelope"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "results": {
+                          "type": "array",
+                          "items": {
+                            "$ref": "#/components/schemas/AccountStatement"
+                          }
+                        }
+                      }
+                    }
+                  ]
+                },
+                "example": {
+                  "total": 2,
+                  "totalPages": 1,
+                  "page": 1,
+                  "results": [
+                    {
+                      "id": "a8534c85-53ce-4f21-94d7-50e9d2ee4957",
+                      "monthYear": "01-2025",
+                      "url": "https://files.example.com/bills/statement.pdf?signature=<SIGNATURE>"
+                    },
+                    {
+                      "id": "05c693bf-c196-47ea-a28c-8251d6bb8a06",
+                      "monthYear": "02-2025",
+                      "url": "https://files.example.com/bills/statement.pdf?signature=<SIGNATURE>"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "accountId ausente ou inválido.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GlobalErrorResponse"
+                },
+                "example": {
+                  "message": "accountId should not be null or undefined,accountId must be a UUID",
+                  "code": 400
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Erro interno.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GlobalErrorResponse"
+                },
+                "example": {
+                  "code": 500,
+                  "codeDescription": "INTERNAL_SERVER_ERROR",
+                  "message": "Internal Server Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/bills": {
+      "get": {
+        "tags": ["Bills"],
+        "summary": "Listar faturas",
+        "description": "Lista as faturas de uma conta de cartão de crédito. O parâmetro accountId é obrigatório e deve referenciar uma conta de subtipo CREDIT_CARD.",
+        "operationId": "listBills",
+        "parameters": [
+          {
+            "name": "accountId",
+            "in": "query",
+            "required": true,
+            "description": "Identificador da conta de cartão de crédito (subtipo CREDIT_CARD).",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Envelope paginado com a lista de faturas.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/PaginatedEnvelope"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "results": {
+                          "type": "array",
+                          "items": {
+                            "$ref": "#/components/schemas/Bill"
+                          }
+                        }
+                      }
+                    }
+                  ]
+                },
+                "example": {
+                  "page": 1,
+                  "total": 1,
+                  "totalPages": 1,
+                  "results": [
+                    {
+                      "id": "05c693bf-c196-47ea-a28c-8251d6bb8a06",
+                      "accountId": "5e9f8f8f-f8f8-4f8f-8f8f-8f8f8f8f8f8f",
+                      "dueDate": "2023-07-20T00:00:00",
+                      "totalAmount": 50000,
+                      "totalAmountCurrencyCode": "BRL",
+                      "minimumPaymentAmount": 50000,
+                      "allowsInstallments": true,
+                      "financeCharges": [
+                        {
+                          "id": "123456bf-c196-47ea-a28c-8251d6bb8777",
+                          "creditCardBillId": "05c693bf-c196-47ea-a28c-8251d6bb8a06",
+                          "type": "IOF",
+                          "amount": 20.51,
+                          "currencyCode": "BRL",
+                          "additionalInfo": "NA"
+                        }
+                      ],
+                      "payments": [
+                        {
+                          "id": "7b1e2c3d-4f5a-4b6c-8d7e-9f0a1b2c3d4e",
+                          "valueType": "FULL_PAYMENT",
+                          "paymentDate": "2023-07-18T00:00:00.000Z",
+                          "paymentMode": "PIX",
+                          "amount": 50000,
+                          "currencyCode": "BRL"
+                        }
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "accountId ausente ou inválido.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GlobalErrorResponse"
+                },
+                "example": {
+                  "message": "accountId should not be null or undefined,accountId must be a UUID",
+                  "code": 400
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Erro interno.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GlobalErrorResponse"
+                },
+                "example": {
+                  "code": 500,
+                  "codeDescription": "INTERNAL_SERVER_ERROR",
+                  "message": "Internal Server Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/bills/{id}": {
+      "get": {
+        "tags": ["Bills"],
+        "summary": "Recuperar fatura",
+        "description": "Recupera uma única fatura pelo seu identificador. Na recuperação individual, os campos `accountId` (na fatura) e `creditCardBillId` (em cada finance charge) também são retornados.",
+        "operationId": "retrieveBill",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "Identificador primário da fatura.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Objeto Bill.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Bill"
+                },
+                "example": {
+                  "id": "05c693bf-c196-47ea-a28c-8251d6bb8a06",
+                  "accountId": "5e9f8f8f-f8f8-4f8f-8f8f-8f8f8f8f8f8f",
+                  "dueDate": "2023-07-20T00:00:00",
+                  "totalAmount": 50000,
+                  "totalAmountCurrencyCode": "BRL",
+                  "minimumPaymentAmount": 50000,
+                  "allowsInstallments": true,
+                  "financeCharges": [
+                    {
+                      "id": "123456bf-c196-47ea-a28c-8251d6bb8777",
+                      "creditCardBillId": "05c693bf-c196-47ea-a28c-8251d6bb8a06",
+                      "type": "IOF",
+                      "amount": 20.51,
+                      "currencyCode": "BRL",
+                      "additionalInfo": "NA"
+                    }
+                  ],
+                  "payments": [
+                    {
+                      "id": "7b1e2c3d-4f5a-4b6c-8d7e-9f0a1b2c3d4e",
+                      "valueType": "FULL_PAYMENT",
+                      "paymentDate": "2023-07-18T00:00:00.000Z",
+                      "paymentMode": "PIX",
+                      "amount": 50000,
+                      "currencyCode": "BRL"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Fatura não encontrada.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GlobalErrorResponse"
+                },
+                "example": {
+                  "code": 404,
+                  "codeDescription": "CREDIT_CARD_BILL_NOT_FOUND",
+                  "message": "Bill not found"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Erro interno.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GlobalErrorResponse"
+                },
+                "example": {
+                  "code": 500,
+                  "codeDescription": "INTERNAL_SERVER_ERROR",
+                  "message": "Internal Server Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "apiKeyAuth": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "X-API-KEY",
+        "description": "Chave de API obrigatória em todas as rotas."
+      }
+    },
+    "schemas": {
+      "PaginatedEnvelope": {
+        "type": "object",
+        "description": "Envelope de paginação por página (page-based). O campo `results` é especializado por endpoint.",
+        "required": ["page", "total", "totalPages", "results"],
+        "properties": {
+          "page": {
+            "type": "integer",
+            "description": "Página atual (1-based).",
+            "example": 1
+          },
+          "total": {
+            "type": "integer",
+            "description": "Total de resultados em todas as páginas.",
+            "example": 2
+          },
+          "totalPages": {
+            "type": "integer",
+            "description": "Número total de páginas.",
+            "example": 1
+          },
+          "results": {
+            "type": "array",
+            "description": "Recursos da página atual.",
+            "items": {}
+          }
+        }
+      },
+      "GlobalErrorResponse": {
+        "type": "object",
+        "description": "Envelope de erro usado em todas as respostas não-2xx.",
+        "required": ["code", "message"],
+        "properties": {
+          "code": {
+            "type": "integer",
+            "description": "Espelha o código de status HTTP.",
+            "example": 404
+          },
+          "message": {
+            "type": "string",
+            "description": "Mensagem legível por humanos."
+          },
+          "codeDescription": {
+            "type": "string",
+            "description": "Código distintivo legível por máquina, ex.: ACCOUNT_NOT_FOUND."
+          },
+          "data": {
+            "type": "object",
+            "description": "Dados adicionais relacionados ao erro, quando houver.",
+            "additionalProperties": true
+          }
+        }
+      },
+      "Account": {
+        "type": "object",
+        "description": "Conta bancária (type=BANK) ou de cartão de crédito (type=CREDIT) coletada para um item. Consulte `balanceAvailable` antes de interpretar o scalar `balance`; `balances` preserva conjuntos que não podem ser reduzidos com fidelidade.",
+        "required": ["id", "type", "subtype", "number", "name", "balance", "balanceAvailable", "itemId", "currencyCode", "createdAt", "updatedAt"],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Identificador primário da conta."
+          },
+          "itemId": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Identificador primário do item ao qual a conta está vinculada."
+          },
+          "type": {
+            "type": "string",
+            "enum": ["BANK", "CREDIT"],
+            "description": "BANK = contas bancárias, de poupança, empréstimo, caixa ou outros produtos AIS, com bankData populado. CREDIT = contas de cartão de crédito, com creditData populado."
+          },
+          "subtype": {
+            "type": "string",
+            "enum": ["CHECKING_ACCOUNT", "SAVINGS_ACCOUNT", "CREDIT_CARD", "LOAN_ACCOUNT", "CASH_ACCOUNT", "OTHER_ACCOUNT"],
+            "description": "CHECKING_ACCOUNT (corrente), SAVINGS_ACCOUNT (poupança), LOAN_ACCOUNT (empréstimo), CASH_ACCOUNT (caixa) e OTHER_ACCOUNT (outro tipo AIS) usam type=BANK; CREDIT_CARD usa type=CREDIT. Para cartões, `number` é mascarado nos últimos 4 dígitos."
+          },
+          "number": {
+            "type": "string",
+            "description": "Identificador externo da conta (ex.: 0001/12345-0) ou últimos 4 dígitos do cartão."
+          },
+          "name": {
+            "type": "string",
+            "description": "Nome descritivo da conta (ex.: Conta Corrente)."
+          },
+          "marketingName": {
+            "type": ["string", "null"],
+            "description": "Nome da marca/produto conforme definido pela instituição."
+          },
+          "balance": {
+            "type": "number",
+            "description": "Scalar normalizado da última coleta. Só deve ser interpretado quando `balanceAvailable=true`."
+          },
+          "balanceAvailable": {
+            "type": "boolean",
+            "description": "Indica se `balance` representa um scalar fiel na moeda da conta."
+          },
+          "balanceUpdatedAt": {
+            "type": ["string", "null"],
+            "format": "date-time",
+            "description": "Momento informado/persistido para a última coleta de saldo."
+          },
+          "balances": {
+            "type": "array",
+            "description": "Conjunto completo de saldos retornado pelo provedor, usado especialmente em contas multimoeda.",
+            "items": {
+              "$ref": "#/components/schemas/AccountBalanceEntry"
+            }
+          },
+          "currencyCode": {
+            "type": "string",
+            "description": "ISO 4217 (ex.: BRL)."
+          },
+          "taxNumber": {
+            "type": ["string", "null"],
+            "description": "CPF/CNPJ do titular, formatado (ex.: 416.799.495-01)."
+          },
+          "owner": {
+            "type": ["string", "null"],
+            "description": "Nome completo do titular da conta."
+          },
+          "bankData": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/BankData"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Presente quando type=BANK."
+          },
+          "creditData": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/CreditData"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Presente quando type=CREDIT."
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Quando a conta foi criada no agregador."
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Última atualização dos dados da conta."
+          }
+        }
+      },
+      "BankData": {
+        "type": "object",
+        "description": "Dados específicos de contas bancárias (type=BANK). Todos os campos são opcionais/nuláveis.",
+        "properties": {
+          "transferNumber": {
+            "type": "string",
+            "description": "Número completo (código da agência / número da conta), ex.: 0001/12345-0."
+          },
+          "closingBalance": {
+            "type": "number",
+            "description": "Saldo incluindo transações ainda não lançadas."
+          },
+          "automaticallyInvestedBalance": {
+            "type": "number",
+            "description": "Saldo automaticamente investido pela instituição."
+          },
+          "overdraftContractedLimit": {
+            "type": "number",
+            "description": "Limite contratado de cheque especial."
+          },
+          "overdraftUsedLimit": {
+            "type": "number",
+            "description": "Limite utilizado de cheque especial."
+          },
+          "unarrangedOverdraftAmount": {
+            "type": "number",
+            "description": "Crédito emergencial acima do limite contratado de cheque especial (adiantamento a depositante)."
+          },
+          "hasReservedBalance": {
+            "type": ["boolean", "null"],
+            "description": "Indica se a conta possui saldos reservados ativos (saldo reservado, ex.: caixinhas, bloqueios judiciais)."
+          },
+          "reservedBalances": {
+            "type": ["array", "null"],
+            "description": "Presente apenas quando hasReservedBalance é true e a instituição expõe o dado.",
+            "items": {
+              "$ref": "#/components/schemas/ReservedBalance"
+            }
+          }
+        }
+      },
+      "ReservedBalance": {
+        "type": "object",
+        "description": "Reserva de saldo (ex.: caixinha).",
+        "required": ["identification", "availableAmounts"],
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Nome dado pelo usuário à reserva."
+          },
+          "identification": {
+            "type": "string",
+            "description": "Identificador único da reserva."
+          },
+          "availableAmounts": {
+            "type": "array",
+            "description": "Uma entrada por faixa de remuneração.",
+            "items": {
+              "$ref": "#/components/schemas/ReservedBalanceAmount"
+            }
+          }
+        }
+      },
+      "ReservedBalanceAmount": {
+        "type": "object",
+        "required": ["amount", "currencyCode"],
+        "properties": {
+          "amount": {
+            "type": "number"
+          },
+          "currencyCode": {
+            "type": "string"
+          },
+          "remuneration": {
+            "type": "object",
+            "description": "Informações de remuneração da reserva.",
+            "properties": {
+              "preFixedRate": {
+                "type": "number",
+                "description": "Fração (0.3 = 30%)."
+              },
+              "postFixedIndexerPercentage": {
+                "type": "number",
+                "description": "Fração (1.1 = 110% do indexador)."
+              },
+              "rateType": {
+                "type": "string",
+                "enum": ["LINEAR", "EXPONENCIAL"]
+              },
+              "indexer": {
+                "type": "string",
+                "description": "Ex.: CDI, IPCA, SELIC, OUTROS."
+              },
+              "calculation": {
+                "type": "string",
+                "enum": ["DIAS_UTEIS", "DIAS_CORRIDOS"]
+              },
+              "ratePeriodicity": {
+                "type": "string",
+                "enum": ["MENSAL", "ANUAL", "DIARIO", "SEMESTRAL"]
+              },
+              "indexerAdditionalInfo": {
+                "type": "string",
+                "description": "Obrigatório quando indexer é OUTROS."
+              }
+            }
+          }
+        }
+      },
+      "CreditData": {
+        "type": "object",
+        "description": "Dados específicos de contas de cartão de crédito (type=CREDIT). Todos os campos são opcionais/nuláveis.",
+        "properties": {
+          "level": {
+            "type": "string",
+            "description": "Nível do cartão (ex.: BLACK, Signature)."
+          },
+          "brand": {
+            "type": "string",
+            "description": "Bandeira do cartão (ex.: MASTERCARD, Visa, Elo)."
+          },
+          "balanceCloseDate": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Data em que a fatura atual fechou."
+          },
+          "balanceDueDate": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Data de vencimento da fatura."
+          },
+          "availableCreditLimit": {
+            "type": "number",
+            "description": "Limite de crédito disponível para gastar."
+          },
+          "balanceForeignCurrency": {
+            "type": "number",
+            "description": "Saldo em USD."
+          },
+          "minimumPayment": {
+            "type": "number",
+            "description": "Pagamento mínimo devido."
+          },
+          "creditLimit": {
+            "type": "number",
+            "description": "Valor máximo que pode ser gasto."
+          },
+          "isLimitFlexible": {
+            "type": "boolean",
+            "description": "Se o limite pode ser ajustado; retornado apenas quando informado pela instituição."
+          },
+          "status": {
+            "type": "string",
+            "enum": ["ACTIVE", "BLOCKED", "CANCELLED"],
+            "description": "Status do cartão de crédito."
+          },
+          "holderType": {
+            "type": "string",
+            "enum": ["MAIN", "ADDITIONAL"],
+            "description": "Tipo de titular do cartão."
+          },
+          "disaggregatedCreditLimits": {
+            "type": "array",
+            "description": "Múltiplas linhas de crédito em um mesmo cartão.",
+            "items": {
+              "$ref": "#/components/schemas/DisaggregatedCreditLimit"
+            }
+          },
+          "additionalCards": {
+            "type": "array",
+            "description": "Cartões adicionais.",
+            "items": {
+              "$ref": "#/components/schemas/AdditionalCard"
+            }
+          }
+        }
+      },
+      "AdditionalCard": {
+        "type": "object",
+        "required": ["number"],
+        "properties": {
+          "number": {
+            "type": "string"
+          }
+        }
+      },
+      "DisaggregatedCreditLimit": {
+        "type": "object",
+        "required": ["creditLineLimitType", "consolidationType", "identificationNumber", "isLimitFlexible", "usedAmount", "usedAmountCurrencyCode"],
+        "properties": {
+          "creditLineLimitType": {
+            "type": "string",
+            "description": "LIMITE_CREDITO_TOTAL ou LIMITE_CREDITO_MODALIDADE_OPERACAO."
+          },
+          "consolidationType": {
+            "type": "string",
+            "description": "Limite consolidado vs individual."
+          },
+          "identificationNumber": {
+            "type": "string",
+            "description": "Número de identificação do cartão ao qual a linha pertence."
+          },
+          "isLimitFlexible": {
+            "type": "boolean"
+          },
+          "usedAmount": {
+            "type": "number"
+          },
+          "usedAmountCurrencyCode": {
+            "type": "string"
+          },
+          "lineName": {
+            "type": "string",
+            "description": "Ex.: Limite de Crédito."
+          },
+          "lineNameAdditionalInfo": {
+            "type": "string"
+          },
+          "limitAmount": {
+            "type": "number"
+          },
+          "limitAmountCurrencyCode": {
+            "type": "string"
+          },
+          "availableAmount": {
+            "type": "number"
+          },
+          "availableAmountCurrencyCode": {
+            "type": "string"
+          }
+        }
+      },
+      "BalanceResponse": {
+        "type": "object",
+        "description": "Último saldo persistido pela sincronização. Quando não existe um scalar fiel, `balance` e `updateDateTime` podem ser nulos e o conjunto `balances` preserva os valores do provedor.",
+        "required": ["balance", "balanceAvailable", "currencyCode", "updateDateTime"],
+        "properties": {
+          "balance": {
+            "type": ["number", "null"],
+            "description": "Scalar do saldo, ou null quando `balanceAvailable=false`."
+          },
+          "balanceAvailable": {
+            "type": "boolean",
+            "description": "Indica se o scalar `balance` está disponível sem conversão ou ambiguidade."
+          },
+          "balances": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AccountBalanceEntry"
+            },
+            "description": "Conjunto completo de saldos por moeda/tipo recebido do provedor."
+          },
+          "blockedBalance": {
+            "type": "number",
+            "description": "Saldo bloqueado."
+          },
+          "automaticallyInvestedBalance": {
+            "type": "number",
+            "description": "Saldo automaticamente investido pela instituição."
+          },
+          "currencyCode": {
+            "type": "string",
+            "description": "ISO 4217 (ex.: BRL)."
+          },
+          "updateDateTime": {
+            "type": ["string", "null"],
+            "format": "date-time",
+            "description": "Momento real da coleta persistida; null quando nenhum saldo foi coletado."
+          }
+        }
+      },
+      "AccountBalanceEntry": {
+        "type": "object",
+        "required": ["amount", "currencyCode", "type"],
+        "properties": {
+          "amount": {
+            "type": "number"
+          },
+          "currencyCode": {
+            "type": "string",
+            "description": "Moeda ISO 4217 do valor."
+          },
+          "type": {
+            "type": "string",
+            "description": "Tipo de saldo informado pelo provedor, por exemplo CLBD ou ITAV."
+          },
+          "name": {
+            "type": "string"
+          }
+        }
+      },
+      "AccountStatement": {
+        "type": "object",
+        "description": "Extrato (PDF) coletado para a conta.",
+        "required": ["id", "monthYear", "url"],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Identificador do extrato."
+          },
+          "monthYear": {
+            "type": "string",
+            "description": "Mês/ano de referência no formato MM-YYYY (ex.: 01-2025)."
+          },
+          "url": {
+            "type": "string",
+            "description": "URL assinada do PDF, válida por 30 minutos."
+          }
+        }
+      },
+      "Bill": {
+        "type": "object",
+        "description": "Fatura de cartão de crédito. Os campos `accountId` (na fatura) e `creditCardBillId` (em cada finance charge) aparecem na recuperação individual.",
+        "required": ["id", "accountId", "dueDate", "totalAmount", "totalAmountCurrencyCode", "financeCharges", "payments"],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "accountId": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Conta de cartão de crédito proprietária."
+          },
+          "dueDate": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Prazo de pagamento exibido ao cliente."
+          },
+          "totalAmount": {
+            "type": "number",
+            "description": "Valor total da fatura."
+          },
+          "totalAmountCurrencyCode": {
+            "type": "string",
+            "description": "Ex.: BRL."
+          },
+          "minimumPaymentAmount": {
+            "type": ["number", "null"],
+            "description": "Pagamento mínimo devido."
+          },
+          "allowsInstallments": {
+            "type": ["boolean", "null"],
+            "description": "Indica se a fatura é elegível a parcelamento."
+          },
+          "financeCharges": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/BillFinanceCharge"
+            }
+          },
+          "payments": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/BillPayment"
+            }
+          }
+        }
+      },
+      "BillFinanceCharge": {
+        "type": "object",
+        "description": "Encargo financeiro de uma fatura.",
+        "required": ["id", "creditCardBillId", "type", "amount", "currencyCode"],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "creditCardBillId": {
+            "type": "string",
+            "description": "Identificador da fatura pai (presente na recuperação individual)."
+          },
+          "type": {
+            "type": "string",
+            "enum": ["LATE_PAYMENT_REMUNERATIVE_INTEREST", "LATE_PAYMENT_FEE", "LATE_PAYMENT_INTEREST", "IOF", "OTHER"]
+          },
+          "amount": {
+            "type": "number"
+          },
+          "currencyCode": {
+            "type": "string"
+          },
+          "additionalInfo": {
+            "type": "string",
+            "description": "Campo livre, obrigatório quando type = OTHER."
+          }
+        }
+      },
+      "BillPayment": {
+        "type": "object",
+        "description": "Pagamento associado a uma fatura.",
+        "required": ["id", "valueType", "paymentDate", "amount", "currencyCode"],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "valueType": {
+            "type": "string",
+            "enum": ["INSTALLMENT_PAYMENT", "FULL_PAYMENT", "OTHER_PAYMENT"]
+          },
+          "paymentDate": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "paymentMode": {
+            "type": ["string", "null"],
+            "enum": ["DEBIT_ACCOUNT", "BANK_SLIP", "PAYROLL_DEDUCTION", "PIX", null]
+          },
+          "amount": {
+            "type": "number"
+          },
+          "currencyCode": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
+}
