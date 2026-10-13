@@ -62,6 +62,8 @@ Envelope paginado com a lista de contas.
       "taxNumber": "416.799.495-01",
       "owner": "John Doe",
       "currencyCode": "BRL",
+      "createdAt": "2026-07-01T12:00:00.000Z",
+      "updatedAt": "2026-07-19T12:00:00.000Z",
       "bankData": {
         "transferNumber": "0001/12345-0",
         "closingBalance": 120950,
@@ -85,6 +87,8 @@ Envelope paginado com a lista de contas.
       "taxNumber": "416.799.495-01",
       "owner": "John Doe",
       "currencyCode": "BRL",
+      "createdAt": "2026-07-01T12:00:00.000Z",
+      "updatedAt": "2026-07-19T12:00:00.000Z",
       "creditData": {
         "level": "BLACK",
         "brand": "MASTERCARD",
@@ -147,6 +151,8 @@ Objeto Account.
   "taxNumber": "416.799.495-01",
   "owner": "John Doe",
   "currencyCode": "BRL",
+  "createdAt": "2026-07-01T12:00:00.000Z",
+  "updatedAt": "2026-07-19T12:00:00.000Z",
   "bankData": {
     "transferNumber": "0001/12345-0",
     "closingBalance": 120950,
@@ -287,6 +293,7 @@ Envelope paginado com a lista de faturas.
   "results": [
     {
       "id": "05c693bf-c196-47ea-a28c-8251d6bb8a06",
+      "accountId": "5e9f8f8f-f8f8-4f8f-8f8f-8f8f8f8f8f8f",
       "dueDate": "2023-07-20T00:00:00",
       "totalAmount": 50000,
       "totalAmountCurrencyCode": "BRL",
@@ -295,10 +302,21 @@ Envelope paginado com a lista de faturas.
       "financeCharges": [
         {
           "id": "123456bf-c196-47ea-a28c-8251d6bb8777",
+          "creditCardBillId": "05c693bf-c196-47ea-a28c-8251d6bb8a06",
           "type": "IOF",
           "amount": 20.51,
           "currencyCode": "BRL",
           "additionalInfo": "NA"
+        }
+      ],
+      "payments": [
+        {
+          "id": "7b1e2c3d-4f5a-4b6c-8d7e-9f0a1b2c3d4e",
+          "valueType": "FULL_PAYMENT",
+          "paymentDate": "2023-07-18T00:00:00.000Z",
+          "paymentMode": "PIX",
+          "amount": 50000,
+          "currencyCode": "BRL"
         }
       ]
     }
@@ -353,6 +371,16 @@ Objeto Bill.
       "amount": 20.51,
       "currencyCode": "BRL",
       "additionalInfo": "NA"
+    }
+  ],
+  "payments": [
+    {
+      "id": "7b1e2c3d-4f5a-4b6c-8d7e-9f0a1b2c3d4e",
+      "valueType": "FULL_PAYMENT",
+      "paymentDate": "2023-07-18T00:00:00.000Z",
+      "paymentMode": "PIX",
+      "amount": 50000,
+      "currencyCode": "BRL"
     }
   ]
 }

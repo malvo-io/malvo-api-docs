@@ -1,6 +1,7 @@
 import importlib.util
 import json
 from pathlib import Path
+import copy
 import re
 import unittest
 
@@ -57,6 +58,15 @@ def remove_section(markdown, method, path):
     return result
 
 
+def spec_documents():
+    return copy.deepcopy(module.load_specs(ROOT))
+
+
+def success_example(documents, name, path, method):
+    document = dict(documents)[name]
+    return document['paths'][path][method]['responses']['200']['content']['application/json']['example']
+
+
 class GeneratedReferenceTests(unittest.TestCase):
     def test_specs_declare_47_operations(self):
         self.assertEqual(len(module.operations(ROOT)), 47)
@@ -92,6 +102,73 @@ class GeneratedReferenceTests(unittest.TestCase):
         for name, document in module.load_specs(ROOT):
             with self.subTest(spec=name):
                 self.assertEqual([server['url'] for server in document.get('servers', [])], [module.BASE_URL])
+
+
+class ExampleSchemaTests(unittest.TestCase):
+    def test_every_documented_example_matches_its_schema(self):
+        self.assertEqual(module.invalid_examples(module.load_specs(ROOT)), [])
+
+    def test_counts_every_request_and_response_example(self):
+        self.assertEqual(len(list(module.documented_examples(module.load_specs(ROOT)))), 185)
+
+    def test_example_without_required_field_is_reported(self):
+        documents = spec_documents()
+        del success_example(documents, 'accounts', '/accounts/{id}', 'get')['createdAt']
+        self.assertEqual(module.invalid_examples(documents), ['GET /accounts/{id} 200: $: campo obrigatório ausente: createdAt'])
+
+    def test_nested_example_without_required_field_is_reported(self):
+        documents = spec_documents()
+        del success_example(documents, 'accounts', '/bills', 'get')['results'][0]['financeCharges'][0]['creditCardBillId']
+        self.assertEqual(module.invalid_examples(documents), ['GET /bills 200: $.results[0].financeCharges[0]: campo obrigatório ausente: creditCardBillId'])
+
+    def test_example_outside_enum_is_reported(self):
+        documents = spec_documents()
+        success_example(documents, 'investments-loans-identity', '/loans/{id}', 'get')['installments']['typeNumberOfInstallments'] = 'MES'
+        self.assertEqual(module.invalid_examples(documents), ['GET /loans/{id} 200: $.installments.typeNumberOfInstallments: valor fora do enum: "MES"'])
+
+    def test_example_with_wrong_type_is_reported(self):
+        documents = spec_documents()
+        success_example(documents, 'transactions', '/transactions/{id}', 'get')['amount'] = '-212.45'
+        self.assertEqual(module.invalid_examples(documents), ['GET /transactions/{id} 200: $.amount: tipo esperado number'])
+
+    def test_invalid_request_example_is_reported(self):
+        documents = spec_documents()
+        dict(documents)['transactions']['paths']['/transactions/{id}']['patch']['requestBody']['content']['application/json']['example'] = {'categoryId': 7010000}
+        self.assertEqual(module.invalid_examples(documents), ['PATCH /transactions/{id} requisição: $.categoryId: tipo esperado string'])
+
+
+class SchemaValidatorTests(unittest.TestCase):
+    def errors(self, schema, value, components=None):
+        return module.schema_errors({'components': {'schemas': components or {}}}, schema, value)
+
+    def test_accepts_nullable_type_list(self):
+        self.assertEqual(self.errors({'type': ['string', 'null']}, None), [])
+
+    def test_distinguishes_integer_number_and_boolean(self):
+        self.assertEqual(self.errors({'type': 'integer'}, 1.5), ['$: tipo esperado integer'])
+        self.assertEqual(self.errors({'type': 'number'}, True), ['$: tipo esperado number'])
+        self.assertEqual(self.errors({'type': 'integer'}, 2.0), [])
+
+    def test_resolves_local_references(self):
+        components = {'Item': {'type': 'object', 'required': ['id'], 'properties': {'id': {'type': 'string'}}}}
+        self.assertEqual(self.errors({'type': 'array', 'items': {'$ref': '#/components/schemas/Item'}}, [{'id': 'a'}, {}], components), ['$[1]: campo obrigatório ausente: id'])
+
+    def test_rejects_additional_properties_when_forbidden(self):
+        self.assertEqual(self.errors({'type': 'object', 'properties': {'a': {}}, 'additionalProperties': False}, {'a': 1, 'b': 2}), ['$: propriedade não permitida: b'])
+
+    def test_one_of_requires_exactly_one_match(self):
+        schema = {'oneOf': [{'type': 'string'}, {'type': 'string', 'enum': ['x']}]}
+        self.assertEqual(self.errors(schema, 1), ['$: nenhuma alternativa de oneOf corresponde'])
+        self.assertEqual(self.errors(schema, 'x'), ['$: mais de uma alternativa de oneOf corresponde'])
+        self.assertEqual(self.errors(schema, 'y'), [])
+
+    def test_checks_all_of_any_of_not_const_and_bounds(self):
+        self.assertEqual(self.errors({'allOf': [{'required': ['a']}, {'required': ['b']}]}, {'a': 1}), ['$: campo obrigatório ausente: b'])
+        self.assertEqual(self.errors({'anyOf': [{'type': 'string'}, {'type': 'null'}]}, 1), ['$: nenhuma alternativa de anyOf corresponde'])
+        self.assertEqual(self.errors({'not': {'type': 'null'}}, None), ['$: valor proibido por not'])
+        self.assertEqual(self.errors({'const': 'a'}, 'b'), ['$: valor diferente de const: "a"'])
+        self.assertEqual(self.errors({'minimum': 1, 'maximum': 3}, 0), ['$: valor menor que 1'])
+        self.assertEqual(self.errors({'minimum': 1, 'maximum': 3}, 4), ['$: valor maior que 3'])
 
 
 class DocumentValidatorTests(unittest.TestCase):

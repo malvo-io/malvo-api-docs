@@ -312,6 +312,7 @@ Página de operações de crédito.
       "ipocCode": "92792126019929279212650822221989319252576",
       "productName": "Crédito Pessoal Consignado",
       "type": "CREDITO_PESSOAL_COM_CONSIGNACAO",
+      "kind": "LOAN",
       "date": "2023-07-20T00:00:00",
       "contractDate": "2022-08-01T00:00:00",
       "disbursementDates": [
@@ -368,9 +369,9 @@ Página de operações de crédito.
         }
       ],
       "installments": {
-        "typeNumberOfInstallments": "MES",
+        "typeNumberOfInstallments": "MONTH",
         "totalNumberOfInstallments": 130632,
-        "typeContractRemaining": "DIA",
+        "typeContractRemaining": "DAY",
         "contractRemainingNumber": 14600,
         "paidInstallments": 73,
         "dueInstallments": 57,
@@ -457,6 +458,7 @@ Objeto Loan.
   "ipocCode": "92792126019929279212650822221989319252576",
   "productName": "Crédito Pessoal Consignado",
   "type": "CREDITO_PESSOAL_COM_CONSIGNACAO",
+  "kind": "LOAN",
   "date": "2023-07-20T00:00:00",
   "contractDate": "2022-08-01T00:00:00",
   "disbursementDates": [
@@ -513,9 +515,9 @@ Objeto Loan.
     }
   ],
   "installments": {
-    "typeNumberOfInstallments": "MES",
+    "typeNumberOfInstallments": "MONTH",
     "totalNumberOfInstallments": 130632,
-    "typeContractRemaining": "DIA",
+    "typeContractRemaining": "DAY",
     "contractRemainingNumber": 14600,
     "paidInstallments": 73,
     "dueInstallments": 57,
@@ -595,6 +597,7 @@ Objeto IdentityResponse.
 ```json
 {
   "id": "42888436-62f5-49d2-8cf9-e312c7939509",
+  "itemId": "a0922d6f-2007-4169-a181-b961500608db",
   "fullName": "Francisco Sousa",
   "companyName": "Empresa Exemplo Ltda",
   "document": "076.630.975-49",
@@ -678,6 +681,7 @@ Objeto IdentityResponse.
 ```json
 {
   "id": "42888436-62f5-49d2-8cf9-e312c7939509",
+  "itemId": "a0922d6f-2007-4169-a181-b961500608db",
   "fullName": "Francisco Sousa",
   "companyName": "Empresa Exemplo Ltda",
   "document": "076.630.975-49",

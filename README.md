@@ -20,6 +20,8 @@ python3 scripts/generate_reference.py          # regrava docs/endpoints/
 python3 scripts/generate_reference.py --check  # falha se docs/endpoints/ estiver desatualizado
 ```
 
+Os dois comandos também falham se algum exemplo JSON (requisição ou resposta) violar o schema da operação: campos obrigatórios, tipos, enums, `const`, limites numéricos e `oneOf`/`anyOf`/`allOf`/`not`, com resolução dos `$ref` locais.
+
 ## Testes
 
 ```bash

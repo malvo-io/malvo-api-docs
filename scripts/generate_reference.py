@@ -399,6 +399,94 @@ def missing_operations(root, documents):
     return missing
 
 
+def json_type_matches(kind, value):
+    if kind == 'null':
+        return value is None
+    if kind == 'boolean':
+        return isinstance(value, bool)
+    if kind == 'integer':
+        return isinstance(value, (int, float)) and not isinstance(value, bool) and float(value).is_integer()
+    if kind == 'number':
+        return isinstance(value, (int, float)) and not isinstance(value, bool)
+    if kind == 'string':
+        return isinstance(value, str)
+    if kind == 'array':
+        return isinstance(value, list)
+    if kind == 'object':
+        return isinstance(value, dict)
+    raise ValueError(f'Unsupported type: {kind}')
+
+
+def same_value(left, right):
+    return type(left) is type(right) and left == right or json_type_matches('number', left) and json_type_matches('number', right) and left == right
+
+
+def schema_errors(document, schema, value, location='$'):
+    if isinstance(schema, bool):
+        return [] if schema else [f'{location}: valor proibido pelo schema']
+    if '$ref' in schema:
+        return schema_errors(document, resolve(document, schema), value, location)
+    errors = []
+    kinds = schema.get('type')
+    if kinds is not None:
+        kinds = kinds if isinstance(kinds, list) else [kinds]
+        if not any(json_type_matches(kind, value) for kind in kinds):
+            return [f'{location}: tipo esperado {" | ".join(kinds)}']
+    if 'enum' in schema and not any(same_value(option, value) for option in schema['enum']):
+        errors.append(f'{location}: valor fora do enum: {json.dumps(value, ensure_ascii=False)}')
+    if 'const' in schema and not same_value(schema['const'], value):
+        errors.append(f'{location}: valor diferente de const: {json.dumps(schema["const"], ensure_ascii=False)}')
+    if json_type_matches('number', value):
+        if 'minimum' in schema and value < schema['minimum']:
+            errors.append(f'{location}: valor menor que {schema["minimum"]}')
+        if 'maximum' in schema and value > schema['maximum']:
+            errors.append(f'{location}: valor maior que {schema["maximum"]}')
+    if isinstance(value, dict):
+        properties = schema.get('properties', {})
+        errors += [f'{location}: campo obrigatório ausente: {name}' for name in schema.get('required', []) if name not in value]
+        for name, child in value.items():
+            if name in properties:
+                errors += schema_errors(document, properties[name], child, f'{location}.{name}')
+            elif schema.get('additionalProperties') is False:
+                errors.append(f'{location}: propriedade não permitida: {name}')
+            elif isinstance(schema.get('additionalProperties'), dict):
+                errors += schema_errors(document, schema['additionalProperties'], child, f'{location}.{name}')
+    if isinstance(value, list) and 'items' in schema:
+        for index, child in enumerate(value):
+            errors += schema_errors(document, schema['items'], child, f'{location}[{index}]')
+    for part in schema.get('allOf', []):
+        errors += schema_errors(document, part, value, location)
+    if 'anyOf' in schema and not any(not schema_errors(document, part, value, location) for part in schema['anyOf']):
+        errors.append(f'{location}: nenhuma alternativa de anyOf corresponde')
+    if 'oneOf' in schema:
+        matches = sum(1 for part in schema['oneOf'] if not schema_errors(document, part, value, location))
+        if matches == 0:
+            errors.append(f'{location}: nenhuma alternativa de oneOf corresponde')
+        elif matches > 1:
+            errors.append(f'{location}: mais de uma alternativa de oneOf corresponde')
+    if 'not' in schema and not schema_errors(document, schema['not'], value, location):
+        errors.append(f'{location}: valor proibido por not')
+    return errors
+
+
+def documented_examples(specs):
+    for _, document in specs:
+        for method, path, _, operation in iterate_operations(document):
+            targets = []
+            if 'requestBody' in operation:
+                targets.append(('requisição', resolve(document, operation['requestBody']).get('content', {}).get('application/json')))
+            targets += [(code, json_content(document, response)) for code, response in response_codes(document, operation)]
+            for label, content in targets:
+                if content is None or 'schema' not in content:
+                    continue
+                for summary, example in content_examples(document, content):
+                    yield document, f'{method} {path} {label}' + (f' ({summary})' if summary else ''), content['schema'], example
+
+
+def invalid_examples(specs):
+    return [f'{name}: {error}' for document, name, schema, example in documented_examples(specs) for error in schema_errors(document, schema, example)]
+
+
 def main():
     parser = argparse.ArgumentParser(description='Gera a referência Markdown dos endpoints a partir das specs OpenAPI.')
     parser.add_argument('--check', action='store_true', help='Falha se os arquivos gerados estiverem desatualizados.')
@@ -408,10 +496,15 @@ def main():
     output = root / OUTPUT_DIR
     stale = sorted(set(path.relative_to(root).as_posix() for path in output.glob('*.md')) - set(documents))
     changed = [name for name, content in documents.items() if not (root / name).exists() or (root / name).read_text() != content]
+    invalid = invalid_examples(load_specs(root))
+    for error in invalid:
+        print(f'Exemplo incompatível com o schema: {error}', file=sys.stderr)
     if arguments.check:
         for name in changed + stale:
             print(f'Desatualizado: {name}', file=sys.stderr)
-        return 1 if changed or stale else 0
+        return 1 if changed or stale or invalid else 0
+    if invalid:
+        return 1
     output.mkdir(parents=True, exist_ok=True)
     for name in stale:
         (root / name).unlink()
