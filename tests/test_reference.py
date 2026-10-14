@@ -109,7 +109,7 @@ class ExampleSchemaTests(unittest.TestCase):
         self.assertEqual(module.invalid_examples(module.load_specs(ROOT)), [])
 
     def test_counts_every_request_and_response_example(self):
-        self.assertEqual(len(list(module.documented_examples(module.load_specs(ROOT)))), 185)
+        self.assertEqual(len(list(module.documented_examples(module.load_specs(ROOT)))), 186)
 
     def test_example_without_required_field_is_reported(self):
         documents = spec_documents()
@@ -123,8 +123,39 @@ class ExampleSchemaTests(unittest.TestCase):
 
     def test_example_outside_enum_is_reported(self):
         documents = spec_documents()
-        success_example(documents, 'investments-loans-identity', '/loans/{id}', 'get')['installments']['typeNumberOfInstallments'] = 'MES'
-        self.assertEqual(module.invalid_examples(documents), ['GET /loans/{id} 200: $.installments.typeNumberOfInstallments: valor fora do enum: "MES"'])
+        success_example(documents, 'investments-loans-identity', '/loans', 'get')['results'][0]['installments']['typeNumberOfInstallments'] = 'UNKNOWN'
+        self.assertEqual(module.invalid_examples(documents), ['GET /loans 200: $.results[0].installments.typeNumberOfInstallments: valor fora do enum: "UNKNOWN"'])
+
+    def test_loan_installment_units_accept_pt_and_en_in_their_own_field(self):
+        documents = spec_documents()
+        installments = success_example(documents, 'investments-loans-identity', '/loans', 'get')['results'][0]['installments']
+        accepted = {
+            'typeNumberOfInstallments': ['DAY', 'WEEK', 'MONTH', 'YEAR', 'WITHOUT_TOTAL_PERIOD', 'DIA', 'SEMANA', 'MES', 'ANO', 'SEM_PRAZO_TOTAL'],
+            'typeContractRemaining': ['DAY', 'WEEK', 'MONTH', 'YEAR', 'WITHOUT_REMAINING_PERIOD', 'WITHOUT_TOTAL_PERIOD', 'DIA', 'SEMANA', 'MES', 'ANO', 'SEM_PRAZO_REMANESCENTE'],
+        }
+        for field, values in accepted.items():
+            for value in values:
+                with self.subTest(field=field, value=value):
+                    installments[field] = value
+                    self.assertEqual(module.invalid_examples(documents), [])
+            installments[field] = 'MONTH'
+
+    def test_loan_installment_sentinel_from_the_other_field_is_reported(self):
+        cases = [('typeNumberOfInstallments', 'SEM_PRAZO_REMANESCENTE'), ('typeNumberOfInstallments', 'WITHOUT_REMAINING_PERIOD'), ('typeContractRemaining', 'SEM_PRAZO_TOTAL')]
+        for field, value in cases:
+            with self.subTest(field=field, value=value):
+                documents = spec_documents()
+                success_example(documents, 'investments-loans-identity', '/loans', 'get')['results'][0]['installments'][field] = value
+                self.assertEqual(module.invalid_examples(documents), [f'GET /loans 200: $.results[0].installments.{field}: valor fora do enum: "{value}"'])
+
+    def test_loan_detail_documents_canonical_and_legacy_installment_units(self):
+        reference = (ROOT / 'docs' / 'endpoints' / 'investments-loans-identity.md').read_text()
+        detail = module.section(reference, 'GET', '/loans/{id}')
+        self.assertIn('Operação gravada ou atualizada após a transição (inglês)', detail)
+        self.assertIn('Registro legado ainda não atualizado (português, descontinuado)', detail)
+        self.assertIn('"typeNumberOfInstallments": "MONTH"', detail)
+        self.assertIn('"typeNumberOfInstallments": "MES"', detail)
+        self.assertIn('Aceite os dois valores na leitura', detail)
 
     def test_example_with_wrong_type_is_reported(self):
         documents = spec_documents()
