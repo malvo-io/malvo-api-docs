@@ -278,7 +278,7 @@ Página de movimentações do investimento.
 
 ## GET /loans — Listar operações de crédito
 
-Recupera todas as operações de crédito coletadas para o item informado. Resposta no formato de página `{ page, total, totalPages, results }` (página única).
+Recupera todas as operações de crédito coletadas para o item informado. Resposta no formato de página `{ page, total, totalPages, results }` (página única). Os campos `installments.typeNumberOfInstallments` e `installments.typeContractRemaining` estão em transição para o inglês: operações novas ou atualizadas vêm em inglês (ex.: `MONTH`) e registros antigos podem vir em português (ex.: `MES`) até a próxima atualização. Aceite os dois valores na leitura.
 
 **Autenticação:** header `X-API-KEY` com a `apiKey` obtida em `POST /auth` (TTL de 2 horas).
 
@@ -429,7 +429,7 @@ Página de operações de crédito.
 
 ## GET /loans/{id} — Recuperar operação de crédito
 
-Retorna uma única operação de crédito pelo seu identificador.
+Retorna uma única operação de crédito pelo seu identificador. Os campos `installments.typeNumberOfInstallments` e `installments.typeContractRemaining` estão em transição para o inglês: operações novas ou atualizadas vêm em inglês (ex.: `MONTH`) e registros antigos podem vir em português (ex.: `MES`) até a próxima atualização. Aceite os dois valores na leitura.
 
 **Autenticação:** header `X-API-KEY` com a `apiKey` obtida em `POST /auth` (TTL de 2 horas).
 
@@ -449,6 +449,8 @@ curl -X GET "https://api.malvo.io/loans/3fa85f64-5717-4562-b3fc-2c963f66afa6" \
 ### Resposta 200
 
 Objeto Loan.
+
+**Operação gravada ou atualizada após a transição (inglês)**
 
 ```json
 {
@@ -518,6 +520,121 @@ Objeto Loan.
     "typeNumberOfInstallments": "MONTH",
     "totalNumberOfInstallments": 130632,
     "typeContractRemaining": "DAY",
+    "contractRemainingNumber": 14600,
+    "paidInstallments": 73,
+    "dueInstallments": 57,
+    "pastDueInstallments": 73,
+    "balloonPayments": [
+      {
+        "dueDate": "2021-05-21T00:00:00",
+        "amount": {
+          "value": 1000.04,
+          "currencyCode": "BRL"
+        }
+      }
+    ]
+  },
+  "payments": {
+    "contractOutstandingBalance": 1000.04,
+    "releases": [
+      {
+        "isOverParcelPayment": true,
+        "installmentId": "WGx0aExYcEJMVm93TFRsZFcyRXRla0V0V2pBdE9Wd3RYWH",
+        "paidDate": "2021-05-21T00:00:00",
+        "currencyCode": "BRL",
+        "paidAmount": 1000.04,
+        "overParcel": {
+          "fees": [
+            {
+              "name": "Reavaliação periódica do bem",
+              "code": "aval_bem",
+              "amount": 100000.04
+            }
+          ],
+          "charges": [
+            {
+              "type": "JUROS_REMUNERATORIOS_POR_ATRASO",
+              "additionalInfo": "",
+              "amount": 1000.04
+            }
+          ]
+        }
+      }
+    ]
+  }
+}
+```
+
+**Registro legado ainda não atualizado (português, descontinuado)**
+
+```json
+{
+  "id": "05c693bf-c196-47ea-a28c-8251d6bb8a06",
+  "itemId": "5e9f8f8f-f8f8-4f8f-8f8f-8f8f8f8f8f8f",
+  "contractNumber": "000000721792794",
+  "ipocCode": "92792126019929279212650822221989319252576",
+  "productName": "Crédito Pessoal Consignado",
+  "type": "CREDITO_PESSOAL_COM_CONSIGNACAO",
+  "kind": "LOAN",
+  "date": "2023-07-20T00:00:00",
+  "contractDate": "2022-08-01T00:00:00",
+  "disbursementDates": [
+    "2018-01-15T00:00:00"
+  ],
+  "settlementDate": "2018-01-15T00:00:00",
+  "contractAmount": 50000,
+  "currencyCode": "BRL",
+  "dueDate": "2028-01-15T00:00:00",
+  "installmentPeriodicity": "MONTHLY",
+  "installmentPeriodicityAdditionalInfo": "",
+  "firstInstallmentDueDate": "2018-02-15T00:00:00",
+  "CET": 0.29,
+  "amortizationScheduled": "SAC",
+  "amortizationScheduledAdditionalInfo": "",
+  "cnpjConsignee": "60.500.998/0001-35",
+  "interestRates": [
+    {
+      "taxType": "EFETIVA",
+      "interestRateType": "SIMPLES",
+      "taxPeriodicity": "AA",
+      "calculation": "21/252",
+      "referentialRateIndexerType": "PRE_FIXADO",
+      "referentialRateIndexerSubType": "TJLP",
+      "referentialRateIndexerAdditionalInfo": "",
+      "preFixedRate": 0.6,
+      "postFixedRate": 0.55,
+      "additionalInfo": ""
+    }
+  ],
+  "contractedFees": [
+    {
+      "name": "Renovação de cadastro",
+      "code": "CADASTRO",
+      "chargeType": "UNICA",
+      "charge": "MINIMO",
+      "amount": 100000.04,
+      "rate": 0.062
+    }
+  ],
+  "contractedFinanceCharges": [
+    {
+      "type": "JUROS_REMUNERATORIOS_POR_ATRASO",
+      "chargeAdditionalInfo": "",
+      "chargeRate": 0.07
+    }
+  ],
+  "warranties": [
+    {
+      "currencyCode": "BRL",
+      "type": "CESSAO_DIREITOS_CREDITORIOS",
+      "subtype": "NOTAS_PROMISSORIAS_OUTROS_DIREITOS_CREDITO",
+      "amount": 1000.04
+    }
+  ],
+  "installments": {
+    "typeNumberOfInstallments": "MES",
+    "totalNumberOfInstallments": 130632,
+    "typeContractRemaining": "DIA",
     "contractRemainingNumber": 14600,
     "paidInstallments": 73,
     "dueInstallments": 57,
